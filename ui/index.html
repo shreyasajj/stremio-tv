@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Stremio TV</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="css/tv.css">
+  <script src="../node_modules/hls.js/dist/hls.min.js"></script>
+</head>
+<body>
+  <div id="app">
+    <nav id="sidebar" data-nav-section="sidebar">
+      <div class="sidebar-inner">
+        <button class="focusable sidebar-item" data-screen="search"><span class="icon">&#128269;</span><span class="label">Search</span></button>
+        <button class="focusable sidebar-item" data-screen="home"><span class="icon">&#8962;</span><span class="label">Home</span></button>
+        <button class="focusable sidebar-item" data-screen="discover"><span class="icon">&#9783;</span><span class="label">Discover</span></button>
+        <button class="focusable sidebar-item" data-screen="library"><span class="icon">&#9733;</span><span class="label">Library</span></button>
+        <button class="focusable sidebar-item" data-screen="addons"><span class="icon">&#129513;</span><span class="label">Add-ons</span></button>
+        <button class="focusable sidebar-item" data-screen="settings"><span class="icon">&#9881;</span><span class="label">Settings</span></button>
+      </div>
+    </nav>
+    <main id="screens"></main>
+    <div id="player-root" class="hidden"></div>
+    <div id="modal-root"></div>
+    <div id="toast-root"></div>
+  </div>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

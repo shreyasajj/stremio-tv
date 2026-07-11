@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Stremio TV
+GenericName=Media Center
+Comment=Stremio client optimized for TV remotes and Plasma Bigscreen
+Exec=stremio-tv
+Icon=stremio-tv
+Terminal=false
+Type=Application
+Categories=AudioVideo;Video;Player;TV;
+X-KDE-BigScreen=true
+StartupWMClass=stremio-tv

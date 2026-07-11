@@ -1,0 +1,21 @@
+{
+  "name": "stremio-tv",
+  "version": "0.1.0",
+  "description": "A TV-first Stremio client for KDE Plasma Bigscreen — full addon support, remote-friendly navigation, YouTube-TV-style player.",
+  "main": "main.js",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "serve": "node test/static-server.js",
+    "mock-addon": "node test/mock-addon.js",
+    "test:addons": "node test/addon-live-test.js",
+    "test:ui": "node test/ui-test.js"
+  },
+  "dependencies": {
+    "hls.js": "^1.5.20"
+  },
+  "devDependencies": {
+    "electron": "^31.7.7",
+    "playwright-core": "^1.49.1"
+  }
+}
