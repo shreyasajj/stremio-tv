@@ -136,6 +136,27 @@ function check(name, cond, info = '') {
   await key('Enter');
   check('OK resumes', !(await page.evaluate(() => document.querySelector('#player-root video').paused)));
 
+  // Backgrounding the app pauses playback and stays paused on return
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { value: true, configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await page.waitForTimeout(300);
+  check('hiding the app pauses playback', await page.evaluate(() => document.querySelector('#player-root video').paused));
+  check('paused overlay is shown', await page.evaluate(() => document.getElementById('player-root').classList.contains('show-controls')));
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { value: false, configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await page.waitForTimeout(6000); // longer than the 5s auto-hide
+  check('stays paused after returning', await page.evaluate(() => document.querySelector('#player-root video').paused));
+  check('overlay stays visible while paused', await page.evaluate(() => document.getElementById('player-root').classList.contains('show-controls')));
+  await key('Enter'); // focused Play button resumes
+  await page.waitForTimeout(300);
+  check('OK resumes after background pause', !(await page.evaluate(() => document.querySelector('#player-root video').paused)));
+  await key('Escape'); // hide controls, back to lean-back mode
+  await page.waitForTimeout(300);
+
   // Right seeks forward (commit happens after ~650ms)
   const t0 = await page.evaluate(() => document.querySelector('#player-root video').currentTime);
   await key('ArrowRight', 2, 200);

@@ -136,6 +136,28 @@ export function openPlayer(ctx) {
   });
   video.addEventListener('error', () => fail('This stream could not be played'));
 
+  // Keep the display awake only while playing (main process powerSaveBlocker).
+  const notifyPlayback = () => window.shell?.setPlaybackActive?.(!video.paused && !video.ended);
+  video.addEventListener('play', notifyPlayback);
+  video.addEventListener('pause', notifyPlayback);
+  video.addEventListener('ended', notifyPlayback);
+
+  // Pause when the app loses focus or is hidden: no decode, no stream
+  // download, (almost) no CPU while another app is in front. Playback stays
+  // paused on return — press OK to resume.
+  s.pauseForBackground = () => {
+    if (!video.paused && !video.ended) {
+      video.pause();
+      refreshPlayButton();
+      // Don't stack the overlay's focus scope on top of an open menu.
+      if (!hasOpenModal()) setMode('controls');
+    }
+  };
+  s.onVisibility = () => { if (document.hidden) s.pauseForBackground(); };
+  window.addEventListener('blur', s.pauseForBackground);
+  document.addEventListener('visibilitychange', s.onVisibility);
+  if (window.shell?.onWindowBlur) window.shell.onWindowBlur(() => { if (session === s) s.pauseForBackground(); });
+
   function fail(msg) {
     toast(msg, 'error');
     closePlayer();
@@ -160,12 +182,14 @@ export function openPlayer(ctx) {
   }
   s.setMode = setMode;
 
+  s.bumpAutohide = bumpAutohide;
   function bumpAutohide() {
     clearTimeout(s.autohideTimer);
     if (s.mode !== 'hidden') {
       s.autohideTimer = setTimeout(() => {
         if (hasOpenModal()) { bumpAutohide(); return; }
         if (s.pendingSeek !== null) { bumpAutohide(); return; }
+        if (video.paused && s.mode === 'controls') { bumpAutohide(); return; } // stay visible while paused
         setMode('hidden');
       }, AUTOHIDE_MS);
     }
@@ -399,8 +423,7 @@ function makeKeyHandler(s) {
     }
     // otherwise let Nav move focus between overlay controls
     if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(k) || Nav.isEnterKey(k)) {
-      clearTimeout(s.autohideTimer);
-      s.autohideTimer = setTimeout(() => { if (!hasOpenModal() && s.pendingSeek === null) s.setMode('hidden'); }, AUTOHIDE_MS);
+      s.bumpAutohide();
       return false; // Nav handles the movement/activation
     }
     return true;
@@ -417,6 +440,9 @@ export function closePlayer() {
   clearTimeout(s.seekCommitTimer);
   Nav.popKeyHandler(s.keyHandler);
   if (s.scoped) Nav.popScope();
+  window.removeEventListener('blur', s.pauseForBackground);
+  document.removeEventListener('visibilitychange', s.onVisibility);
+  window.shell?.setPlaybackActive?.(false);
   if (s.hls) { try { s.hls.destroy(); } catch { /* ignore */ } }
   s.video.pause();
   s.video.removeAttribute('src');

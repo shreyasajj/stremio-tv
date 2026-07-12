@@ -71,6 +71,32 @@ server URL** (e.g. `http://127.0.0.1:11470`).
 Most TV remotes (HDMI-CEC via `cec-ctl`, Bluetooth remotes, air mice) present these as
 regular keyboard keys, which is all the app listens for.
 
+## Focus & power behavior
+
+- **Losing focus pauses playback.** If you switch to another app (or the window is
+  hidden), the video pauses immediately — no decoding, no stream downloading, no audio
+  behind whatever is now on screen. It stays paused when you come back; press **OK** to
+  resume from the paused overlay.
+- **Background throttling** is enabled, so a hidden Stremio TV window costs almost no CPU.
+- **The screen stays awake only while playing.** A power-save blocker is held during
+  playback and released the moment you pause or stop, so the box can blank/sleep normally
+  otherwise.
+
+## Do I need the Stremio streaming server (backend)?
+
+**Usually no.** In official Stremio, the UI and playback are separate pieces (the
+streaming-server backend downloads/serves the stream, and on desktop an external player
+process plays it) — which is why a crashed frontend there can leave audio playing.
+Stremio TV has no such split: the video plays inside the app's own window, in the same
+process tree. If the app closes or crashes, playback dies with it, and losing focus
+pauses it (see above). There is no separate service to install, start, or leak resources.
+
+The one thing the backend provides that this app doesn't is a **torrent engine**. Streams
+that are direct HTTP links — everything AIOStreams/debrid returns — play natively. Only
+if you want addons that return raw torrent `infoHash` results (e.g. Torrentio without
+debrid) do you need Stremio's streaming server running somewhere, with its URL set in
+**Settings → Streaming server URL**.
+
 ## Codec notes
 
 Playback uses Chromium's media stack: H.264/AAC/VP9/AV1/Opus/Vorbis work out of the box,

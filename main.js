@@ -1,6 +1,6 @@
 // Electron main process: fullscreen kiosk window for the TV UI.
 
-const { app, BrowserWindow, ipcMain, session, net } = require('electron');
+const { app, BrowserWindow, ipcMain, net, powerSaveBlocker } = require('electron');
 const path = require('path');
 
 // TV boxes: play without a click, prefer hardware decoding where available.
@@ -24,6 +24,9 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      // Throttle timers/rendering whenever the window is hidden or occluded
+      // so the app costs (almost) nothing in the background.
+      backgroundThrottling: true,
     },
   });
   win.removeMenu();
@@ -35,8 +38,23 @@ function createWindow() {
   win.on('leave-full-screen', () => {
     if (!win.isDestroyed()) win.setFullScreen(true);
   });
+  // Tell the UI when the window loses/gains focus so playback can pause
+  // instead of burning CPU/network behind another app.
+  win.on('blur', () => { if (!win.isDestroyed()) win.webContents.send('window-blur'); });
+  win.on('focus', () => { if (!win.isDestroyed()) win.webContents.send('window-focus'); });
   win.loadFile(path.join(__dirname, 'ui', 'index.html'));
 }
+
+// Keep the display awake only while something is actually playing.
+let powerBlockerId = null;
+ipcMain.on('playback-state', (_e, playing) => {
+  if (playing && powerBlockerId === null) {
+    powerBlockerId = powerSaveBlocker.start('prevent-display-sleep');
+  } else if (!playing && powerBlockerId !== null) {
+    powerSaveBlocker.stop(powerBlockerId);
+    powerBlockerId = null;
+  }
+});
 
 // Subtitle files live on hosts that don't send CORS headers; fetch them in the
 // main process (no CORS there) and hand the text to the renderer.
