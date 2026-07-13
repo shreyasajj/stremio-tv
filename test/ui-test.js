@@ -46,7 +46,10 @@ function check(name, cond, info = '') {
     headless: !process.argv.includes('--headed'),
     args: ['--autoplay-policy=no-user-gesture-required', '--no-sandbox'],
   });
-  const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
+  const page = await browser.newPage({
+    viewport: { width: 1920, height: 1080 },
+    permissions: ['clipboard-read', 'clipboard-write'],
+  });
   page.on('pageerror', (e) => { console.log('PAGE ERROR:', e.message); failures++; });
 
   const shot = async (name) => {
@@ -218,16 +221,37 @@ function check(name, cond, info = '') {
   check('episode list renders', await page.locator('.episode-item').count() === 3);
   await shot('09-series');
 
-  // ---- Search with the on-screen keyboard (physical passthrough) ----
-  await page.evaluate(() => document.querySelector('[data-screen="search"]').focus());
-  await key('Enter');
-  await page.waitForSelector('.btn.primary');
-  await page.evaluate(() => document.querySelector('.btn.primary').focus());
-  await key('Enter');
-  await page.waitForSelector('.osk-rows');
+  // ---- Type-anywhere search: pressing a letter jumps into Search ----
+  await page.keyboard.type('m');
+  await page.waitForSelector('.osk-rows', { timeout: 5000 });
+  check('typing anywhere opens the search keyboard', true);
+  await page.waitForTimeout(300);
+  await page.keyboard.type('ock s', { delay: 80 });
+  check('typed characters captured', (await page.locator('.osk-display').textContent()).includes('mock s'));
+
+  // Backspace edits the query instead of closing the keyboard
+  await key('Backspace');
+  await page.waitForTimeout(150);
+  check('keyboard stays open on Backspace', (await page.locator('.osk-rows').count()) === 1);
+  const afterBs = await page.locator('.osk-display').textContent();
+  check('Backspace deleted one character', afterBs.includes('mock') && !afterBs.includes('mock s'), afterBs.trim());
+
+  // Live results while typing (no Done needed)
+  await page.keyboard.type('series', { delay: 80 }); // query: "mock series"
+  await page.waitForTimeout(1400); // debounce + fetch
+  check('live results appear while typing', (await page.locator('.screen:not(.hidden)').textContent()).includes('Mock Series'));
   await shot('10-osk');
-  await page.keyboard.type('series', { delay: 60 });
-  // move to Done: bottom row last key
+
+  // Paste with Ctrl+V
+  await page.evaluate(() => navigator.clipboard.writeText('PASTED'));
+  await page.keyboard.press('Control+v');
+  await page.waitForTimeout(400);
+  check('Ctrl+V pastes from clipboard', (await page.locator('.osk-display').textContent()).includes('mock seriesPASTED'));
+  check('a Paste key exists on the keyboard', await page.evaluate(() =>
+    [...document.querySelectorAll('.osk-key')].some((k) => k.textContent === 'Paste')));
+  await key('Backspace', 6, 60); // remove PASTED again
+
+  // Done -> results kept, focus lands on a result
   await page.evaluate(() => {
     const keys = [...document.querySelectorAll('.osk-key')];
     keys.find((k) => k.textContent === 'Done').focus();
@@ -236,6 +260,7 @@ function check(name, cond, info = '') {
   await page.waitForTimeout(1200);
   const searchText = await page.locator('.screen:not(.hidden)').textContent();
   check('search finds the series', searchText.includes('Mock Series'), searchText.slice(0, 120));
+  check('a result card is focused after Done', (await focusedClass()).includes('meta-card'), await focusedText());
   await shot('11-search-results');
 
   // ---- Settings + addons reachable ----

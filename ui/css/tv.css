@@ -234,6 +234,16 @@ h2.row-title .row-sub { color: var(--text-dim); font-weight: 400; font-size: 20p
   box-shadow: 0 30px 80px rgba(0,0,0,.6);
 }
 .modal-title { font-size: 28px; font-weight: 700; margin-bottom: 20px; }
+/* Docked-left keyboard: keep the right side of the screen visible so live
+   search results show up while you type. */
+.modal-backdrop.dock-left {
+  justify-content: flex-start;
+  background: linear-gradient(90deg, rgba(4,5,10,.95) 0%, rgba(4,5,10,.88) 44%, rgba(4,5,10,.15) 62%);
+}
+.modal-backdrop.dock-left .modal { margin-left: 56px; min-width: 640px; max-width: 46vw; }
+/* While the docked keyboard is open, the search screen pushes its results
+   into the visible right half. */
+.screen.osk-docked { padding-left: 52vw; transition: padding-left .2s; }
 .modal-body { overflow-y: auto; scroll-behavior: smooth; }
 .modal .list-item.selected .li-title::before { content: "\2713  "; color: var(--accent-2); }
 

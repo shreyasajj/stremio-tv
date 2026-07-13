@@ -2,7 +2,7 @@
 // Physical keyboards also work: printable keys type directly while the
 // keyboard modal is open.
 
-import { el, openModal } from './ui.js';
+import { el, openModal, toast } from './ui.js';
 import { Nav } from './nav.js';
 
 const ROWS_LOWER = [
@@ -20,8 +20,9 @@ const ROWS_SYMBOLS = [
 ];
 
 // oskPrompt: open a modal keyboard, resolve with the final string (null if backed out).
-// opts: { title, value, password, onChange (live, for search) }
-export function oskPrompt({ title = 'Enter text', value = '', password = false, onChange } = {}) {
+// opts: { title, value, password, onChange (live, for search),
+//         dock: 'left' keeps the right side of the screen visible (live results) }
+export function oskPrompt({ title = 'Enter text', value = '', password = false, onChange, dock } = {}) {
   return new Promise((resolve) => {
     let text = value;
     let layer = 'lower'; // lower | upper | symbols
@@ -59,6 +60,17 @@ export function oskPrompt({ title = 'Enter text', value = '', password = false, 
       return b;
     }
 
+    async function paste() {
+      let clip = '';
+      try {
+        if (window.shell?.readClipboard) clip = await window.shell.readClipboard();
+        else if (navigator.clipboard?.readText) clip = await navigator.clipboard.readText();
+      } catch { /* clipboard unavailable */ }
+      clip = (clip || '').replace(/[\r\n]+/g, ' ').trim();
+      if (clip) setText(text + clip);
+      else toast('Clipboard is empty');
+    }
+
     function renderRows() {
       rowsHost.innerHTML = '';
       const rows = layer === 'upper' ? ROWS_UPPER : layer === 'symbols' ? ROWS_SYMBOLS : ROWS_LOWER;
@@ -72,6 +84,7 @@ export function oskPrompt({ title = 'Enter text', value = '', password = false, 
         key(layer === 'upper' ? 'abc' : 'ABC', () => { layer = layer === 'upper' ? 'lower' : 'upper'; renderRows(); }, layer === 'upper' ? 'on' : ''),
         key('#+=', () => { layer = layer === 'symbols' ? 'lower' : 'symbols'; renderRows(); }, layer === 'symbols' ? 'on' : ''),
         key('Space', () => setText(text + ' '), 'wide'),
+        key('Paste', paste),
         key('⌫', () => setText(text.slice(0, -1))),
         key('Clear', () => setText('')),
         key('Done', finish, 'wide')
@@ -90,16 +103,20 @@ export function oskPrompt({ title = 'Enter text', value = '', password = false, 
       if (e.key === 'Enter' && document.activeElement?.classList.contains('osk-key')) {
         return false; // let Nav activate the focused key
       }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') { paste(); return true; }
       if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
         setText(text + e.key);
         return true;
       }
-      if (e.key === 'Delete') { setText(text.slice(0, -1)); return true; }
+      // Backspace edits the text — it must NOT fall through to "go back",
+      // which would close the keyboard.
+      if (e.key === 'Backspace' || e.key === 'Delete') { setText(text.slice(0, -1)); return true; }
       return false;
     }
 
     Nav.pushKeyHandler(physicalKeys);
     const handle = openModal(modal, {
+      backdropClass: dock === 'left' ? 'dock-left' : '',
       onClose: () => {
         Nav.popKeyHandler(physicalKeys);
         if (!done) { done = true; resolve(null); }

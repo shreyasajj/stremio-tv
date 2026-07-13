@@ -99,8 +99,25 @@ function wireSidebar() {
   });
 }
 
+// Type-anywhere search: pressing a printable key on any screen (outside the
+// player, menus, and the on-screen keyboard, which register their own
+// higher-priority handlers) jumps straight into Search with that character.
+function typeToSearch(e) {
+  if (e.ctrlKey || e.metaKey || e.altKey) return false;
+  if (e.key.length !== 1 || e.key === ' ') return false;
+  if (hasOpenModal() || isPlayerOpen()) return false;
+  const active = document.querySelector('#screens .screen:not(.hidden)');
+  if (active && active._openSearchKeyboard) {
+    active._openSearchKeyboard(e.key);
+  } else {
+    router.show('search', { autoOpen: true, initialQuery: e.key });
+  }
+  return true;
+}
+
 async function boot() {
   Nav.init();
+  Nav.pushKeyHandler(typeToSearch);
   Nav.setBackHandler(() => {
     if (hasOpenModal()) { closeTopModal(); return; }
     if (isPlayerOpen()) return; // the player consumes its own back presses

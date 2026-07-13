@@ -28,9 +28,9 @@ export function toast(message, kind = 'info', ms = 4000) {
 
 const modalStack = [];
 
-export function openModal(contentEl, { onClose } = {}) {
+export function openModal(contentEl, { onClose, backdropClass } = {}) {
   const root = document.getElementById('modal-root');
-  const backdrop = el('div', { class: 'modal-backdrop' }, contentEl);
+  const backdrop = el('div', { class: 'modal-backdrop' + (backdropClass ? ' ' + backdropClass : '') }, contentEl);
   root.append(backdrop);
   const prevFocus = document.activeElement;
   const entry = { backdrop, onClose, prevFocus };

@@ -1,6 +1,6 @@
 // Electron main process: fullscreen kiosk window for the TV UI.
 
-const { app, BrowserWindow, ipcMain, net, powerSaveBlocker } = require('electron');
+const { app, BrowserWindow, ipcMain, net, powerSaveBlocker, clipboard } = require('electron');
 const path = require('path');
 
 // TV boxes: play without a click, prefer hardware decoding where available.
@@ -74,6 +74,10 @@ ipcMain.handle('proxy-fetch', async (_e, url) => {
     return { ok: false, status: 0, contentType: '', body: '', error: String(e.message || e) };
   }
 });
+
+// Paste into the on-screen keyboard (navigator.clipboard needs a permission
+// dance in the renderer; the main-process clipboard doesn't).
+ipcMain.handle('read-clipboard', () => clipboard.readText());
 
 ipcMain.on('app-quit', () => app.quit());
 

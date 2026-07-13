@@ -22,6 +22,10 @@ remote: arrow keys, OK, and Back are all you need.
   - **Back** → hide controls / stop playback (progress is saved)
 - **Continue Watching** — progress is stored locally; resume from Home, Library, or the title page.
 - **Subtitles** — embedded tracks plus subtitle addons (e.g. OpenSubtitles), with adjustable size.
+- **Type-anywhere search** — press any letter on any screen (with a physical/HDMI-CEC keyboard)
+  and you land in Search with the keyboard open; results update live as you type, no need to
+  press Done. Inside the on-screen keyboard, **Backspace deletes** (Esc closes) and you can
+  **paste** with Ctrl+V or the keyboard's Paste key — handy for long AIOStreams URLs.
 - **Series support** — season picker, episode list, auto "next episode" (binge groups auto-pick the same source).
 
 ## Requirements on the box
