@@ -70,6 +70,46 @@ export async function render({ router }) {
     }
   );
 
+
+  // Diagnostics are deliberately read-only. Chromium's channel profiles do
+  // not establish Dolby Atmos bitstream passthrough capability.
+  settingItem(
+    'HDMI audio diagnostics',
+    'View Wayland, PipeWire/PulseAudio and ALSA outputs (does not enable Atmos)',
+    async () => {
+      if (!window.shell?.audioDiagnostics) {
+        toast('Audio diagnostics require the desktop app', 'error');
+        return;
+      }
+      try {
+        const info = await window.shell.audioDiagnostics();
+        const report = [
+          'Session: ' + info.session,
+          'Audio server:',
+          info.commands.server || 'Unknown',
+          'Audio sinks:',
+          info.commands.sinks || 'None found',
+          'ALSA devices:',
+          info.commands.alsa || 'None found',
+          'NOTE: 5.1/7.1 PCM is not proof of Dolby Atmos passthrough.',
+        ].join('\\n\\n');
+        console.info('HDMI audio diagnostics\\n' + report);
+        const copied = await confirmModal(
+          'Audio diagnostics collected. Select Copy to copy the results. ' +
+          'No audio settings were changed.',
+          { okLabel: 'Copy', cancelLabel: 'Close' }
+        );
+        if (copied) {
+          await navigator.clipboard.writeText(report);
+          toast('Diagnostics copied');
+        }
+      } catch (error) {
+        console.error('Audio diagnostics failed', error);
+        toast('Could not read audio diagnostics', 'error');
+      }
+    }
+  );
+
   // Clear watch history
   settingItem('Clear watch history', 'Removes all Continue Watching / Library progress', async () => {
     if (await confirmModal('Clear all watch progress?', { okLabel: 'Clear', danger: true })) {
