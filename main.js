@@ -2,6 +2,9 @@
 
 const { app, BrowserWindow, ipcMain, net, powerSaveBlocker, clipboard } = require('electron');
 const path = require('path');
+const { execFile } = require('node:child_process');
+const { promisify } = require('node:util');
+const execFileAsync = promisify(execFile);
 
 // TV boxes: play without a click, prefer hardware decoding where available.
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
@@ -78,6 +81,33 @@ ipcMain.handle('proxy-fetch', async (_e, url) => {
 // Paste into the on-screen keyboard (navigator.clipboard needs a permission
 // dance in the renderer; the main-process clipboard doesn't).
 ipcMain.handle('read-clipboard', () => clipboard.readText());
+
+
+// Read-only troubleshooting information for Linux HDMI audio. Do not infer Atmos
+// support from speaker count: encoded passthrough depends on the player and sink.
+ipcMain.handle('audio-diagnostics', async () => {
+  const diagnostics = {
+    session: process.env.XDG_SESSION_TYPE || 'unknown',
+    commands: {},
+  };
+  for (const [label, command, args] of [
+    ['server', 'pactl', ['info']],
+    ['sinks', 'pactl', ['list', 'short', 'sinks']],
+    ['alsa', 'aplay', ['-l']],
+  ]) {
+    try {
+      const { stdout } = await execFileAsync(command, args, {
+        timeout: 4000,
+        maxBuffer: 128 * 1024,
+        encoding: 'utf8',
+      });
+      diagnostics.commands[label] = stdout.slice(0, 10000).trim();
+    } catch (error) {
+      diagnostics.commands[label] = 'Unavailable: ' + (error.code || error.message);
+    }
+  }
+  return diagnostics;
+});
 
 ipcMain.on('app-quit', () => app.quit());
 
