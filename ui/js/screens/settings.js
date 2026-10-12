@@ -100,7 +100,7 @@ export async function render({ router }) {
           { okLabel: 'Copy', cancelLabel: 'Close' }
         );
         if (copied) {
-          await navigator.clipboard.writeText(report);
+          await window.shell.writeClipboard(report);
           toast('Diagnostics copied');
         }
       } catch (error) {
