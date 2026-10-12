@@ -81,6 +81,10 @@ ipcMain.handle('proxy-fetch', async (_e, url) => {
 // Paste into the on-screen keyboard (navigator.clipboard needs a permission
 // dance in the renderer; the main-process clipboard doesn't).
 ipcMain.handle('read-clipboard', () => clipboard.readText());
+ipcMain.handle('write-clipboard', (_e, text) => {
+  if (typeof text !== 'string' || text.length > 40000) throw new Error('Invalid clipboard text');
+  clipboard.writeText(text);
+});
 
 
 // Read-only troubleshooting information for Linux HDMI audio. Do not infer Atmos
