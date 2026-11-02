@@ -28,6 +28,17 @@ remote: arrow keys, OK, and Back are all you need.
   **paste** with Ctrl+V or the keyboard's Paste key — handy for long AIOStreams URLs.
 - **Series support** — season picker, episode list, auto "next episode" (binge groups auto-pick the same source).
 
+## Native build (Qt + libmpv) — recommended
+
+There are two shells around the same UI:
+
+- **Native (`native/`)**: a Qt 6 Wayland window with embedded **libmpv** playback.
+  Plays HEVC/AV1/MKV, switches audio tracks for real, and can pass Dolby/DTS
+  through to a soundbar. Install the Flatpak from the
+  [Releases page](https://github.com/shreyasajj/stremio-tv/releases), or see
+  [native/README.md](native/README.md) to build from source.
+- **Electron (repo root)**: the original shell, below. It uses Chromium's media stack.
+
 ## Requirements on the box
 
 - Linux with Plasma Bigscreen (or any desktop — the app is just fullscreen)

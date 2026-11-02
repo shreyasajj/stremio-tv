@@ -1,76 +1,96 @@
 import QtQuick
-import QtQuick.Controls
-import QtQuick.Layouts
-import StremioTV.Player 1.0
+import QtQuick.Window
+import QtWebEngine
+import QtWebChannel
+import StremioTV.Native
 
-ApplicationWindow {
+// libmpv video underneath, the existing remote-first web UI on top. The page
+// goes transparent while the player is open so the video shows through.
+Window {
     id: window
     visible: true
-    visibility: Window.FullScreen
-    title: "Stremio TV Native"
-    color: "#0c0d16"
-    property bool controlsVisible: true
+    visibility: shell.windowed ? Window.Windowed : Window.FullScreen
+    width: 1280
+    height: 720
+    color: "black"
+    title: "Stremio TV"
 
-    function formatSeconds(value) {
-        let s = Math.max(0, Math.floor(value))
-        return Math.floor(s / 3600) + ":" + String(Math.floor(s / 60) % 60).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0")
+    // Like the Electron kiosk window: if something drops us out of
+    // fullscreen, go back.
+    onVisibilityChanged: {
+        if (!shell.windowed && window.visibility !== Window.FullScreen && window.visibility !== Window.Hidden)
+            Qt.callLater(window.showFullScreen)
+    }
+    // Losing focus pauses playback (handled in the UI).
+    onActiveChanged: active ? shell.windowFocus() : shell.windowBlur()
+
+    ShellBridge {
+        id: shell
+        WebChannel.id: "native"
+    }
+
+    MpvController {
+        id: mpv
+        WebChannel.id: "mpv"
     }
 
     MpvVideo {
-        id: player
         anchors.fill: parent
-        focus: true
-        Keys.onPressed: event => {
-            if (event.key === Qt.Key_Space || event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                player.togglePause(); event.accepted = true
-            } else if (event.key === Qt.Key_Left) {
-                player.seekRelative(-10); event.accepted = true
-            } else if (event.key === Qt.Key_Right) {
-                player.seekRelative(10); event.accepted = true
-            } else if (event.key === Qt.Key_Up || event.key === Qt.Key_Down) {
-                controlsVisible = !controlsVisible; event.accepted = true
-            } else if (event.key === Qt.Key_Escape || event.key === Qt.Key_Back) {
-                if (controlsVisible) controlsVisible = false
-                else { player.stop(); controlsVisible = true }
-                event.accepted = true
-            }
-        }
+        controller: mpv
     }
 
-    Rectangle {
-        id: overlay
-        visible: controlsVisible
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        height: 245
-        color: "#dd131724"
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 24
-            spacing: 12
-            Label { text: "STREMIO TV  •  NATIVE WAYLAND PLAYER"; color: "white"; font.pixelSize: 23; font.bold: true }
-            RowLayout {
-                TextField {
-                    id: urlInput
-                    Layout.fillWidth: true
-                    placeholderText: "Paste a direct HTTP(S) media URL to test playback"
-                    color: "white"
-                    selectByMouse: true
-                    onAccepted: { player.source = text; player.forceActiveFocus() }
-                }
-                Button { text: "Play URL"; onClicked: { player.source = urlInput.text; player.forceActiveFocus() } }
-            }
-            Label { text: "Audio codec: " + (player.codec || "not detected") + "    HDMI output: " + player.audioDevice; color: "#d2dae8" }
-            Label { text: window.formatSeconds(player.position) + " / " + window.formatSeconds(player.duration); color: "white" }
-            RowLayout {
-                Button { text: player.paused ? "▶ Play" : "⏸ Pause"; onClicked: { player.togglePause(); player.forceActiveFocus() } }
-                Button { text: "−10s"; onClicked: { player.seekRelative(-10); player.forceActiveFocus() } }
-                Button { text: "+10s"; onClicked: { player.seekRelative(10); player.forceActiveFocus() } }
-                Button { text: "Stop"; onClicked: { player.stop(); player.forceActiveFocus() } }
-                Item { Layout.fillWidth: true }
-                Label { text: "↑↓ Controls • ←→ Seek • OK Pause • Back Hide/Stop"; color: "#d2dae8" }
-            }
+    WebEngineProfile {
+        id: profile
+        // Persistent so localStorage (addons, settings, progress) survives.
+        storageName: "StremioTV"
+        offTheRecord: false
+        httpCacheType: WebEngineProfile.DiskHttpCache
+        persistentCookiesPolicy: WebEngineProfile.ForcePersistentCookies
+    }
+
+    WebEngineView {
+        id: web
+        anchors.fill: parent
+        focus: true
+        profile: profile
+        backgroundColor: "transparent"
+        settings.localContentCanAccessRemoteUrls: true
+        settings.playbackRequiresUserGesture: false
+        settings.javascriptCanAccessClipboard: true
+        settings.showScrollBars: false
+        settings.focusOnNavigationEnabled: true
+        webChannel: WebChannel {
+            registeredObjects: [shell, mpv]
+        }
+
+        Component.onCompleted: {
+            const script = WebEngine.script()
+            script.name = "stremio-tv-bridge"
+            script.sourceCode = shell.injectScript
+            script.injectionPoint = WebEngineScript.DocumentCreation
+            script.worldId = WebEngineScript.MainWorld
+            userScripts.insert(script)
+            url = shell.uiUrl
+            forceActiveFocus()
+        }
+
+        onRenderProcessTerminated: (status, code) => {
+            console.warn("Web UI process terminated (" + status + ", " + code + "), reloading")
+            mpv.command(["stop"])
+            reloadTimer.start()
+        }
+        Timer {
+            id: reloadTimer
+            interval: 500
+            onTriggered: web.reload()
+        }
+
+        // Never navigate away from the UI (e.g. a stray link); open nothing.
+        onNewWindowRequested: request => request.action = WebEngineNewWindowRequest.IgnoreRequest
+        onFeaturePermissionRequested: (origin, feature) => web.grantFeaturePermission(origin, feature, false)
+        onJavaScriptConsoleMessage: (level, message, line, source) => {
+            if (shell.testMode || level >= WebEngineView.WarningMessageLevel)
+                console.log("[ui]", message, "(" + source + ":" + line + ")")
         }
     }
 }

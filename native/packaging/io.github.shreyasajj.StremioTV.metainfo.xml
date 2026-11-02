@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.shreyasajj.StremioTV</id>
+  <name>Stremio TV</name>
+  <summary>Remote-first Stremio client for Plasma Bigscreen</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <description>
+    <p>
+      A TV-first Stremio client: every screen works with arrow keys, OK and Back.
+      It speaks the Stremio addon protocol, so addons such as AIOStreams and
+      Cinemeta work unchanged. Video plays through embedded libmpv, with
+      hardware decoding, multiple audio tracks and optional surround passthrough.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.shreyasajj.StremioTV.desktop</launchable>
+  <url type="homepage">https://github.com/shreyasajj/stremio-tv</url>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.2.0" date="2026-11-01"/>
+  </releases>
+</component>

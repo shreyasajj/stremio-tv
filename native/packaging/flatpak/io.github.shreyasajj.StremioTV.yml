@@ -1,0 +1,136 @@
+# Flatpak for the native (Qt 6 + WebEngine + libmpv) Stremio TV shell.
+#
+#   flatpak-builder --user --install --force-clean --install-deps-from=flathub \
+#     build-dir native/packaging/flatpak/io.github.shreyasajj.StremioTV.yml
+#
+# FFmpeg and libmpv are built here: the runtime's FFmpeg has no H.264/HEVC
+# decoders. Module versions follow Flathub's io.mpv.Mpv manifest.
+id: io.github.shreyasajj.StremioTV
+runtime: org.kde.Platform
+runtime-version: '6.10'
+sdk: org.kde.Sdk
+base: io.qt.qtwebengine.BaseApp
+base-version: '6.10'
+command: stremio-tv-native
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --filesystem=xdg-run/pipewire-0:ro
+  # GPU (VAAPI/GL) and /dev/snd for direct ALSA HDMI passthrough (Atmos/DTS).
+  - --device=all
+  # Keep the screen awake while playing.
+  - --talk-name=org.freedesktop.ScreenSaver
+  - --env=QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess
+  - --env=QTWEBENGINE_DICTIONARIES_PATH=/app/qtwebengine_dictionaries
+
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+  - /share/doc
+  - '*.la'
+  - '*.a'
+
+modules:
+  - name: dav1d
+    buildsystem: meson
+    config-opts:
+      - -Denable_tools=false
+      - -Denable_tests=false
+    sources:
+      - type: git
+        url: https://code.videolan.org/videolan/dav1d.git
+        tag: 1.5.1
+
+  - name: libass
+    config-opts:
+      - --disable-static
+      - --enable-asm
+      - --enable-harfbuzz
+      - --enable-fontconfig
+    sources:
+      - type: git
+        url: https://github.com/libass/libass.git
+        tag: 0.17.5
+        commit: 4a05d8127f525943ebf45fdc6497c9e665947f0d
+
+  - name: ffmpeg
+    config-opts:
+      - --disable-debug
+      - --disable-doc
+      - --disable-programs
+      - --disable-static
+      - --enable-shared
+      - --enable-gpl
+      - --enable-version3
+      - --enable-gnutls
+      - --enable-libdav1d
+      - --enable-libdrm
+      - --enable-vaapi
+      - --enable-libxml2
+    sources:
+      - type: git
+        url: https://github.com/FFmpeg/FFmpeg.git
+        tag: n9.0.2
+        commit: 946fcce07b6dcd0331c8cc609192aeff5e1924f8
+
+  - name: libplacebo
+    buildsystem: meson
+    config-opts:
+      - -Dvulkan=disabled
+      - -Dshaderc=disabled
+      - -Dglslang=disabled
+      - -Ddemos=false
+      - -Dtests=false
+    sources:
+      - type: git
+        url: https://github.com/haasn/libplacebo.git
+        tag: v7.387.0
+        commit: 275f7dea27924cdd34ab2e6c20e448b6bc4fab65
+
+  - name: libmpv
+    buildsystem: meson
+    config-opts:
+      - -Dlibmpv=true
+      - -Dcplayer=false
+      - -Dbuild-date=false
+      - -Dlua=disabled
+      - -Djavascript=disabled
+      - -Dmanpage-build=disabled
+      - -Dvulkan=disabled
+      - -Dalsa=enabled
+      - -Dpipewire=enabled
+      - -Dpulse=enabled
+      - -Dwayland=enabled
+      - -Degl-wayland=enabled
+      - -Dvaapi=enabled
+      - -Dwerror=false
+    sources:
+      - type: git
+        url: https://github.com/mpv-player/mpv.git
+        tag: v0.41.0
+        commit: 41f6a645068483470267271e1d09966ca3b9f413
+
+  - name: stremio-tv
+    buildsystem: cmake-ninja
+    subdir: native
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+    sources:
+      - type: dir
+        path: ../../..
+        skip:
+          - .git
+          - node_modules
+          - native/build
+          - test
+          - .flatpak-builder
+          - build-dir
+          - repo

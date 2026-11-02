@@ -1,57 +1,85 @@
-# Native Stremio TV: Wayland prototype
+# Native Stremio TV shell (Qt 6 + libmpv)
 
-This is the **first runnable native playback shell**, not a completed replacement
-for the Electron application. It uses **Qt 6 Quick + embedded libmpv** via
-`QQuickFramebufferObject` and never launches an external player window.
-It retains a fullscreen, arrow-key/OK/Back-controlled overlay. The Stremio
-addon discovery, login, catalog and Continue Watching systems are **not yet ported**.
+The same remote-first web UI as the Electron app (`../ui`), hosted in a native
+Qt 6 window (Wayland or X11) with **embedded libmpv** for playback:
 
-## KDE neon prerequisites
-
-```bash
-sudo apt update
-sudo apt install build-essential cmake pkg-config qt6-base-dev qt6-declarative-dev \
-  libmpv-dev libgl1-mesa-dev mpv alsa-utils
+```
+QQuickWindow (fullscreen, OpenGL)
+├── MpvVideo        libmpv frames rendered into the scene graph
+└── WebEngineView   the UI, transparent while a video plays
+       └─ QWebChannel: window.shell  (bridge.js ↔ ShellBridge, MpvController)
 ```
 
-## Build / run
+`ui/js/mpv-video.js` makes mpv look like an HTML `<video>` element, so
+`player.js` drives either backend. Under Electron nothing changes.
+
+| File | Role |
+| --- | --- |
+| `mpvcontroller.*` | libmpv core: commands, options, observed properties → UI |
+| `mpvitem.*` | `MpvVideo` QML item: OpenGL render of the mpv frames |
+| `shellbridge.*` | `window.shell`: subtitle fetch, clipboard, quit, screensaver inhibit |
+| `bridge.js` | injected into the page; builds `window.shell` over QWebChannel |
+| `Main.qml` | window, video item, web view, persistent profile |
+
+## Build & run from source (KDE neon / Debian / Ubuntu 24.10+)
 
 ```bash
-cmake -S native -B native/build -DCMAKE_BUILD_TYPE=Release
-cmake --build native/build -j"$(nproc)"
-QT_QPA_PLATFORM=wayland ./native/build/stremio-tv-native
+sudo apt install build-essential cmake ninja-build pkg-config libmpv-dev \
+  qt6-base-dev qt6-declarative-dev qt6-webengine-dev qt6-webchannel-dev \
+  qml6-module-qtquick qml6-module-qtquick-window qml6-module-qtwebengine \
+  qml6-module-qtwebchannel qt6-wayland
+cmake -S native -B native/build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build native/build
+./native/build/stremio-tv-native            # fullscreen
+STREMIO_TV_WINDOWED=1 ./native/build/stremio-tv-native   # windowed, for development
 ```
 
-To force a known working HDMI ALSA output:
+Qt 6.5 or newer is required. A source build loads the UI straight from `../ui`, so
+UI edits only need an app restart.
+
+## Flatpak
 
 ```bash
-mpv --audio-device=help
-STREMIO_TV_AUDIO_DEVICE='alsa/hdmi:CARD=HDMI,DEV=0' \
-  QT_QPA_PLATFORM=wayland ./native/build/stremio-tv-native
+flatpak-builder --user --install --force-clean --install-deps-from=flathub \
+  build-dir native/packaging/flatpak/io.github.shreyasajj.StremioTV.yml
+flatpak run io.github.shreyasajj.StremioTV
 ```
 
-The device above is **an example only**. Select the actual HDMI output found
-on your hardware. Paste a direct media URL in the field and press Play.
+CI (`.github/workflows/native.yml`) builds x86_64 and aarch64 bundles on every
+push. Pushing a `v*` tag publishes them as a GitHub Release.
 
-## Playback and Atmos constraints
+## Tests
 
-- `audio-spdif=ac3,eac3,truehd` requests encoded passthrough via ALSA.
-  It **does not ensure** Atmos reaches the soundbar; the audio device, EDID,
-  Hisense eARC configuration, stream track and soundbar must support it.
-- The application shows the decoded/identified audio codec name, not a
-  verified Atmos/JOC flag or proof that passthrough is active.
-- Try known E-AC3 Atmos test content before TrueHD Atmos.
-- Encoded passthrough makes in-app digital volume controls inappropriate:
-  adjust volume at the soundbar.
-- This is a Qt Quick **OpenGL** renderer. Native Wayland compositors can run
-  OpenGL clients; confirm your GPU/driver supports Qt Quick OpenGL.
-- `QQuickFramebufferObject` is a functional but Qt 6 legacy OpenGL bridge.
-  A QRhi-native rendering item would be a subsequent optimization.
-- No raw torrent engine is bundled; use authorized direct HTTP media.
+`test/native-test.js` launches the real binary, attaches over Chromium's remote
+debugging protocol, and drives it with remote keys against the mock addon. It
+checks playback through mpv's own properties: playing, pause, seek, the addon
+subtitle loaded, resume, and that the page goes transparent. With `SHOTS=1` it saves
+composited window grabs, video included.
 
-## Remaining migration work
+```bash
+# anywhere with Docker: headless Weston + software GL
+docker build -t stremio-tv-native-dev native/dev
+docker run --rm -v "$PWD":/src -w /src -e SHOTS=1 stremio-tv-native-dev sh native/dev/run-tests.sh
+# or on the box itself, after building
+NATIVE_BIN=native/build/stremio-tv-native npm run test:native
+```
 
-Port Stremio addon API and browser/navigation model, episode selection,
-subtitle addons, multi-track audio UI, watch progress storage, packaging,
-automated tests and remote hardware testing. Retain Electron as a fallback
-until those features and HDMI audio are validated.
+## Audio passthrough (Atmos/DTS) checklist
+
+1. *Settings → Audio output device*: pick the HDMI ALSA device (`alsa/hdmi:CARD=…`).
+   This opens the device directly, bypassing PipeWire.
+2. *Settings → Surround passthrough*: pick the codecs your receiver accepts.
+   TrueHD and DTS-HD need HDMI eARC.
+3. Play a title with an E-AC3/Atmos track, open *Audio* in the player. The
+   selected track should read `Output: EAC3 bitstream passthrough`. That line is
+   mpv's real output format. The soundbar's display is the final word on Atmos.
+4. In passthrough, set the volume on the TV or soundbar; the app can't scale a bitstream.
+
+## Environment variables
+
+| Variable | Effect |
+| --- | --- |
+| `STREMIO_TV_WINDOWED=1` | don't force fullscreen |
+| `STREMIO_TV_UI=/path/index.html` | load a different UI build |
+| `STREMIO_TV_TEST=1` | enable the screenshot hook used by tests |
+| `QTWEBENGINE_REMOTE_DEBUGGING=127.0.0.1:9222` | inspect the UI from Chrome's `chrome://inspect` |
