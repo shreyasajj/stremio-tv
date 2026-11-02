@@ -142,4 +142,9 @@ async function boot() {
 }
 
 window.stremioTV = { router, Storage }; // handy for debugging from devtools
-boot();
+// The native Qt shell builds window.shell asynchronously over QWebChannel.
+// Don't wait forever if the bridge never comes up: boot with HTML5 playback.
+Promise.race([
+  window.shellReady || Promise.resolve(),
+  new Promise((resolve) => setTimeout(resolve, 5000)),
+]).then(boot);

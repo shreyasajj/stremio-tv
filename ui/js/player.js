@@ -11,6 +11,9 @@ import { Nav } from './nav.js';
 import { Storage } from './storage.js';
 import { el, toast, formatTime, pickerModal, hasOpenModal } from './ui.js';
 import { getSubtitles } from './addons.js';
+import {
+  MpvVideo, nativeMpvAvailable, applyAudioOutput, trackLabel, audioTrackDetails, audioOutputSummary,
+} from './mpv-video.js';
 
 const SEEK_COMMIT_MS = 650;
 const AUTOHIDE_MS = 5000;
@@ -29,8 +32,10 @@ export function openPlayer(ctx) {
   root.classList.remove('hidden');
   root.classList.add('loading');
 
-  const video = el('video', { autoplay: '', preload: 'auto' });
-  video.crossOrigin = 'anonymous';
+  // Native Qt shell: embedded libmpv (all codecs, real track switching,
+  // passthrough). Electron/browser: the HTML5 <video> element.
+  const video = nativeMpvAvailable() ? new MpvVideo() : el('video', { autoplay: '', preload: 'auto' });
+  if (!video.isNative) video.crossOrigin = 'anonymous';
 
   // ---- overlay DOM ----
   const title = ctx.meta?.name || 'Playing';
@@ -57,7 +62,7 @@ export function openPlayer(ctx) {
     flash,
     el('div', { class: 'player-loading' })
   );
-  root.append(video, overlay);
+  root.append(video.element || video, overlay);
 
   const s = (session = {
     ctx, root, video, seekBar, buttons, hls: null,
@@ -100,7 +105,10 @@ export function openPlayer(ctx) {
 
   // ---- media source ----
   const isHls = /\.m3u8(\?|$)/i.test(ctx.url);
-  if (isHls && window.Hls && window.Hls.isSupported()) {
+  if (video.isNative) {
+    applyAudioOutput(video.mpv, Storage.getSettings());
+    video.src = ctx.url;
+  } else if (isHls && window.Hls && window.Hls.isSupported()) {
     s.hls = new window.Hls();
     s.hls.loadSource(ctx.url);
     s.hls.attachMedia(video);
@@ -265,6 +273,7 @@ export function openPlayer(ctx) {
 
   // ---- menus ----
   async function subtitleMenu() {
+    if (video.isNative) { await nativeSubtitleMenu(); bumpAutohide(); return; }
     const options = [{ label: 'Off', value: 'off' }];
     for (let i = 0; i < video.textTracks.length; i++) {
       const tt = video.textTracks[i];
@@ -308,7 +317,56 @@ export function openPlayer(ctx) {
     }
   }
 
+  // mpv: embedded and addon subtitles are all mpv tracks; addon files are
+  // fetched by mpv itself (sub-add) and rendered with full ASS styling.
+  async function nativeSubtitleMenu() {
+    const tracks = video.subtitleTracks();
+    const options = [{ label: 'Off', value: 'off' }];
+    tracks.filter((t) => !t.external).forEach((t) => {
+      options.push({ label: `${trackLabel(t)} (embedded)`, value: `track:${t.id}` });
+    });
+    s.addonSubs.forEach((sub, i) => {
+      options.push({ label: `${(sub.lang || '?').toUpperCase()} — ${sub.addonName}`, value: `addon:${i}` });
+    });
+    if (options.length === 1) options.push({ label: 'No subtitles found', value: 'off' });
+    let selected = 'off';
+    const current = tracks.find((t) => t.selected);
+    if (current) {
+      const addonIdx = s.addonSubs.findIndex((sub) => sub.url === current['external-filename']);
+      selected = current.external && addonIdx >= 0 ? `addon:${addonIdx}` : `track:${current.id}`;
+    }
+    const chosen = await pickerModal('Subtitles', options, { selectedValue: selected });
+    if (chosen === null) return;
+    if (chosen === 'off') video.selectSubtitle(null);
+    else if (chosen.startsWith('track:')) video.selectSubtitle(Number(chosen.split(':')[1]));
+    else if (chosen.startsWith('addon:')) {
+      const sub = s.addonSubs[Number(chosen.split(':')[1])];
+      video.addSubtitle(sub.url, `${(sub.lang || '?').toUpperCase()} — ${sub.addonName}`, sub.lang);
+    }
+  }
+
+  async function nativeAudioMenu() {
+    const tracks = video.audioTracks();
+    const output = audioOutputSummary(video);
+    if (!tracks.length) {
+      await pickerModal('Audio track', [{ label: 'No audio track', sub: output, value: 0 }], { selectedValue: 0 });
+      return;
+    }
+    const current = tracks.find((t) => t.selected);
+    // mpv deselects audio when no device opens; still show why on a track.
+    const outputOn = current || tracks[0];
+    const options = tracks.map((t) => ({
+      label: trackLabel(t),
+      // The selected track also shows what actually reaches the TV/soundbar.
+      sub: [audioTrackDetails(t), t === outputOn ? output : ''].filter(Boolean).join('  ·  '),
+      value: t.id,
+    }));
+    const chosen = await pickerModal('Audio track', options, { selectedValue: current?.id });
+    if (chosen !== null) video.selectAudio(chosen);
+  }
+
   async function audioMenu() {
+    if (video.isNative) { await nativeAudioMenu(); bumpAutohide(); return; }
     let options = [];
     if (s.hls && s.hls.audioTracks && s.hls.audioTracks.length > 1) {
       options = s.hls.audioTracks.map((t, i) => ({ label: t.name || t.lang || `Track ${i + 1}`, value: i }));
@@ -344,6 +402,7 @@ export function openPlayer(ctx) {
   function applySubtitleSize() {
     const size = Storage.getSettings().subtitleSize;
     document.documentElement.style.setProperty('--cue-size', size + '%');
+    if (video.isNative) video.setSubtitleScale(size / 100);
   }
 
   // ---- addon subtitles (background fetch) ----
@@ -444,9 +503,13 @@ export function closePlayer() {
   document.removeEventListener('visibilitychange', s.onVisibility);
   window.shell?.setPlaybackActive?.(false);
   if (s.hls) { try { s.hls.destroy(); } catch { /* ignore */ } }
-  s.video.pause();
-  s.video.removeAttribute('src');
-  try { s.video.load(); } catch { /* ignore */ }
+  if (s.video.isNative) {
+    s.video.destroy();
+  } else {
+    s.video.pause();
+    s.video.removeAttribute('src');
+    try { s.video.load(); } catch { /* ignore */ }
+  }
   s.root.innerHTML = '';
   s.root.classList.add('hidden');
   s.root.classList.remove('show-seek', 'show-controls', 'loading');

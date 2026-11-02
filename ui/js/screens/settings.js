@@ -4,6 +4,7 @@ import { el, toast, pickerModal, confirmModal } from '../ui.js';
 import { Storage } from '../storage.js';
 import { oskPrompt } from '../keyboard.js';
 import { logout, loggedInEmail } from '../stremio-api.js';
+import { nativeMpvAvailable, PASSTHROUGH_PRESETS } from '../mpv-video.js';
 
 export async function render({ router }) {
   const root = el('div', { class: 'screen' });
@@ -69,6 +70,45 @@ export async function render({ router }) {
       }
     }
   );
+
+  // Audio output (native libmpv player only)
+  if (nativeMpvAvailable()) {
+    const devices = (await window.shell.mpv.get('audio-device-list')) || [];
+    const deviceLabel = (name) => {
+      if (!name || name === 'auto') return 'System default (PipeWire/PulseAudio)';
+      const d = devices.find((x) => x.name === name);
+      return d ? `${d.description} — ${d.name}` : name;
+    };
+    settingItem('Audio output device', deviceLabel(settings.audioDevice), async () => {
+      const options = [{ label: deviceLabel('auto'), value: 'auto' }];
+      devices.filter((d) => d.name !== 'auto').forEach((d) => {
+        options.push({ label: d.description || d.name, sub: d.name, value: d.name });
+      });
+      const chosen = await pickerModal('Audio output device', options, { selectedValue: settings.audioDevice || 'auto' });
+      if (chosen !== null) {
+        Storage.setSettings({ audioDevice: chosen });
+        toast('Applies from the next video you play');
+        router.refresh();
+      }
+    });
+
+    const preset = PASSTHROUGH_PRESETS.find((p) => p.value === (settings.audioPassthrough || '')) || PASSTHROUGH_PRESETS[0];
+    settingItem(
+      'Surround passthrough (Dolby / DTS bitstream)',
+      `${preset.label}. Sends the encoded audio to your TV/soundbar untouched. ` +
+        'Most reliable with an HDMI ALSA device (alsa/hdmi:…) selected above; volume is then controlled on the soundbar.',
+      async () => {
+        const chosen = await pickerModal('Surround passthrough',
+          PASSTHROUGH_PRESETS.map((p) => ({ label: p.label, value: p.value })),
+          { selectedValue: preset.value });
+        if (chosen !== null) {
+          Storage.setSettings({ audioPassthrough: chosen });
+          toast('Applies from the next video you play');
+          router.refresh();
+        }
+      }
+    );
+  }
 
   // Clear watch history
   settingItem('Clear watch history', 'Removes all Continue Watching / Library progress', async () => {
