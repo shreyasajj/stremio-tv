@@ -12,16 +12,24 @@ export const OFFICIAL_ADDONS = [
 ];
 
 const FETCH_TIMEOUT = 15000;
+// Aggregators like AIOStreams query many upstream addons before answering.
+const STREAM_FETCH_TIMEOUT = 45000;
 
-async function getJSON(url) {
+async function getJSON(url, { signal, timeout = FETCH_TIMEOUT } = {}) {
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT);
+  const t = setTimeout(() => ctrl.abort(), timeout);
+  const onAbort = () => ctrl.abort();
+  if (signal) {
+    if (signal.aborted) ctrl.abort();
+    else signal.addEventListener('abort', onAbort, { once: true });
+  }
   try {
     const res = await fetch(url, { signal: ctrl.signal });
     if (!res.ok) throw new Error(`HTTP ${res.status} from ${url}`);
     return await res.json();
   } finally {
     clearTimeout(t);
+    if (signal) signal.removeEventListener('abort', onAbort);
   }
 }
 
@@ -182,11 +190,15 @@ export async function getMeta(type, id) {
 // ---- streams ------------------------------------------------------------
 
 // Returns [{ addon, stream }] aggregated across all stream-capable addons.
-export async function getStreams(type, id) {
+// `signal` cancels every request (the user backed out of the search).
+export async function getStreams(type, id, { signal } = {}) {
   const candidates = addonsFor('stream', type, id);
   const results = await Promise.allSettled(
     candidates.map(async (addon) => {
-      const data = await getJSON(`${addonBaseUrl(addon)}/stream/${encodeURIComponent(type)}/${encodeURIComponent(id)}.json`);
+      const data = await getJSON(
+        `${addonBaseUrl(addon)}/stream/${encodeURIComponent(type)}/${encodeURIComponent(id)}.json`,
+        { signal, timeout: STREAM_FETCH_TIMEOUT }
+      );
       return (data.streams || []).map((stream) => ({ addon, stream }));
     })
   );

@@ -81,8 +81,8 @@ function findMeta(id) {
   return MOVIES.find((m) => m.id === id) || SERIES.find((s) => s.id === id) || null;
 }
 
-function createServer() {
-  return http.createServer((req, res) => {
+function createServer({ streamDelayMs = 0 } = {}) {
+  return http.createServer(async (req, res) => {
     const p = decodeURIComponent(new URL(req.url, BASE).pathname);
     if (p === '/manifest.json') return json(res, MANIFEST);
 
@@ -100,6 +100,8 @@ function createServer() {
       return json(res, { meta: findMeta(m[2]) });
     }
     if ((m = p.match(/^\/stream\/(movie|series)\/(.+)\.json$/))) {
+      // Real stream addons (AIOStreams) often take seconds to answer.
+      if (streamDelayMs) await new Promise((r) => setTimeout(r, streamDelayMs));
       return json(res, {
         streams: [
           { name: 'Mock HD', title: 'Sample stream 720p\nmock-server', url: `${BASE}/sample.webm`, behaviorHints: { bingeGroup: 'mock-hd' } },

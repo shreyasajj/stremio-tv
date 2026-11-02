@@ -10,6 +10,7 @@
     "mock-addon": "node test/mock-addon.js",
     "test:addons": "node test/addon-live-test.js",
     "test:ui": "node test/ui-test.js",
+    "test:native-flow": "node test/native-flow-test.js",
     "test:native": "node test/native-test.js"
   },
   "dependencies": {

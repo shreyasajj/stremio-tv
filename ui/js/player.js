@@ -9,7 +9,7 @@
 
 import { Nav } from './nav.js';
 import { Storage } from './storage.js';
-import { el, toast, formatTime, pickerModal, hasOpenModal } from './ui.js';
+import { el, toast, formatTime, pickerModal, hasOpenModal, closeAllModals } from './ui.js';
 import { getSubtitles } from './addons.js';
 import {
   MpvVideo, nativeMpvAvailable, applyAudioOutput, trackLabel, audioTrackDetails, audioOutputSummary,
@@ -27,6 +27,9 @@ export function isPlayerOpen() {
 // ctx: { url, meta, videoId, videoLabel, streamTitle, resumeTime, nextVideo, onNext }
 export function openPlayer(ctx) {
   if (session) closePlayer();
+  // The player owns the screen: no dialog may stay drawn over the video
+  // (with mpv the page is see-through) or keep catching remote keys.
+  closeAllModals();
   const root = document.getElementById('player-root');
   root.innerHTML = '';
   root.classList.remove('hidden');
@@ -451,6 +454,8 @@ function makeKeyHandler(s) {
   return (e) => {
     if (!session) return false;
     const k = e.key;
+    // Held OK auto-repeats on remotes; it must not machine-gun pause/play.
+    if (e.repeat && Nav.isEnterKey(k)) return true;
 
     // Media keys work regardless of overlay/modal state.
     if (k === 'MediaPlayPause' || k === 'MediaPlay' || k === 'MediaPause') { s.togglePlay(); return true; }

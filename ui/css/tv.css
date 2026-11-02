@@ -385,11 +385,14 @@ html.native-video-playing #screens { visibility: hidden; }
   border-top-color: #fff;
   width: 90px; height: 90px;
   border-radius: 50%;
-  animation: spin 1s linear infinite;
+  animation: spin-centered 1s linear infinite;
   display: none;
 }
 #player-root.loading .player-loading { display: block; }
-@keyframes spin { to { transform: translate(-50%,-50%) rotate(360deg); } }
+/* Two keyframes on purpose: the centered spinner keeps its translate while
+   rotating; anything else must only rotate, or it drifts up and left. */
+@keyframes spin-centered { to { transform: translate(-50%,-50%) rotate(360deg); } }
+@keyframes spin { to { transform: rotate(360deg); } }
 
 /* ---- Toasts ---- */
 #toast-root {
@@ -424,7 +427,11 @@ html.native-video-playing #screens { visibility: hidden; }
   border-radius: 50%;
   animation: spin 1s linear infinite;
   vertical-align: middle;
+  flex: none;
 }
+.loading-modal .modal-title { display: flex; align-items: center; gap: 14px; }
+.loading-modal .btn-row { margin-bottom: 0; }
+.loading-modal:focus { outline: none; }
 .empty-note { color: var(--text-dim); font-size: 22px; padding: 30px 0; }
 .selector-bar { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 10px; }
 .addon-logo { width: 72px; height: 72px; border-radius: 12px; background: var(--bg-card); object-fit: contain; flex: none; }

@@ -41,13 +41,17 @@ export function openModal(contentEl, { onClose, backdropClass } = {}) {
   };
 }
 
-function closeModal(entry) {
+function closeModal(entry, { restoreFocus = true } = {}) {
   const i = modalStack.indexOf(entry);
   if (i < 0) return;
   modalStack.splice(i, 1);
   entry.backdrop.remove();
-  Nav.popScope();
-  if (entry.prevFocus && entry.prevFocus.isConnected) Nav.focus(entry.prevFocus);
+  Nav.removeScope(entry.backdrop);
+  // Only hand focus back if it lands in the layer that is now on top.
+  if (restoreFocus) {
+    if (entry.prevFocus && entry.prevFocus.isConnected && Nav.inTopScope(entry.prevFocus)) Nav.focus(entry.prevFocus);
+    else if (!Nav.inTopScope(document.activeElement)) Nav.focusFirst();
+  }
   if (entry.onClose) entry.onClose();
 }
 
@@ -55,6 +59,12 @@ export function closeTopModal() {
   if (!modalStack.length) return false;
   closeModal(modalStack[modalStack.length - 1]);
   return true;
+}
+
+// Close every dialog (newest first), e.g. before the player takes over the
+// screen so nothing is left drawn over the video or catching remote keys.
+export function closeAllModals() {
+  while (modalStack.length) closeModal(modalStack[modalStack.length - 1], { restoreFocus: false });
 }
 
 export function hasOpenModal() {
