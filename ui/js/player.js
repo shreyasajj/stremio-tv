@@ -353,10 +353,12 @@ export function openPlayer(ctx) {
       return;
     }
     const current = tracks.find((t) => t.selected);
+    // mpv deselects audio when no device opens; still show why on a track.
+    const outputOn = current || tracks[0];
     const options = tracks.map((t) => ({
       label: trackLabel(t),
       // The selected track also shows what actually reaches the TV/soundbar.
-      sub: [audioTrackDetails(t), t === current ? output : ''].filter(Boolean).join('  ·  '),
+      sub: [audioTrackDetails(t), t === outputOn ? output : ''].filter(Boolean).join('  ·  '),
       value: t.id,
     }));
     const chosen = await pickerModal('Audio track', options, { selectedValue: current?.id });
