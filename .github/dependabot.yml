@@ -1,0 +1,21 @@
+# Weekly dependency updates against main. Minor/patch bumps are auto-merged
+# by .github/workflows/dependabot-automerge.yml once CI passes.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    target-branch: main
+    schedule:
+      interval: weekly
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: main
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']
