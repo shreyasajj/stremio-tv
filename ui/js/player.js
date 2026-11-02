@@ -14,6 +14,7 @@ import { getSubtitles } from './addons.js';
 import {
   MpvVideo, nativeMpvAvailable, applyAudioOutput, trackLabel, audioTrackDetails, audioOutputSummary,
 } from './mpv-video.js';
+import { iconSvg } from './icons.js';
 
 const SEEK_COMMIT_MS = 650;
 const AUTOHIDE_MS = 5000;
@@ -86,20 +87,22 @@ export function openPlayer(ctx) {
 
   // ---- control buttons ----
   function button(icon, label, onClick, attrs = {}) {
+    const ic = el('div', { class: 'icon' });
+    ic.innerHTML = iconSvg(icon);
     const b = el('button', { class: 'focusable player-btn', ...attrs },
-      el('div', { class: 'icon', text: icon }),
+      ic,
       el('div', { class: 'label', text: label }));
     b.addEventListener('click', onClick);
     buttons.append(b);
     return b;
   }
-  const playBtn = button('⏸', 'Pause', () => togglePlay(), { 'data-nav-default': '' });
+  const playBtn = button('pause', 'Pause', () => togglePlay(), { 'data-nav-default': '' });
   s.playBtn = playBtn;
-  button('🗨', 'Subtitles', () => subtitleMenu());
-  button('🔊', 'Audio', () => audioMenu());
-  button('⏩', 'Speed', () => speedMenu());
+  button('subtitles', 'Subtitles', () => subtitleMenu());
+  button('audio', 'Audio', () => audioMenu());
+  button('speed', 'Speed', () => speedMenu());
   if (ctx.nextVideo && ctx.onNext) {
-    button('⏭', 'Next episode', () => {
+    button('next', 'Next episode', () => {
       const next = ctx.nextVideo;
       closePlayer();
       ctx.onNext(next);
@@ -208,21 +211,21 @@ export function openPlayer(ctx) {
 
   function refreshPlayButton() {
     const paused = video.paused;
-    playBtn.querySelector('.icon').textContent = paused ? '▶' : '⏸';
+    playBtn.querySelector('.icon').innerHTML = iconSvg(paused ? 'play' : 'pause');
     playBtn.querySelector('.label').textContent = paused ? 'Play' : 'Pause';
   }
 
   function togglePlay() {
     if (video.paused) video.play().catch(() => {});
     else video.pause();
-    showFlash(video.paused ? '⏸' : '▶');
+    showFlash(video.paused ? 'pause' : 'play');
     refreshPlayButton();
     bumpAutohide();
   }
   s.togglePlay = togglePlay;
 
   function showFlash(icon) {
-    flash.textContent = icon;
+    flash.innerHTML = iconSvg(icon);
     flash.classList.remove('on');
     void flash.offsetWidth; // restart animation
     flash.classList.add('on');
@@ -253,7 +256,8 @@ export function openPlayer(ctx) {
     const dur = video.duration || Infinity;
     s.pendingSeek = Math.max(0, Math.min(isFinite(dur) ? dur - 1 : base + dirSign * step, base + dirSign * step));
     if (s.mode === 'hidden') setMode('seek');
-    seekPreview.textContent = `${dirSign > 0 ? '⏩' : '⏪'} ${formatTime(s.pendingSeek)}`;
+    seekPreview.innerHTML = iconSvg(dirSign > 0 ? 'forward' : 'rewind');
+    seekPreview.append(formatTime(s.pendingSeek));
     updateBar(s.pendingSeek);
     bumpAutohide();
     clearTimeout(s.seekCommitTimer);

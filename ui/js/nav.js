@@ -79,10 +79,20 @@ function move(dir) {
     if (s < bestScore) { bestScore = s; best = el; }
   }
   if (best) {
-    focus(best);
+    focus(entryPoint(best, cur) || best);
     return true;
   }
   return false;
+}
+
+// A container with data-nav-entry="<selector>" is entered at that child
+// rather than the geometrically nearest one (the nav rail opens on the
+// current screen's item, wherever on the screen you came from).
+function entryPoint(target, from) {
+  const box = target.closest('[data-nav-entry]');
+  if (!box || box.contains(from)) return null;
+  const entry = box.querySelector(box.dataset.navEntry);
+  return entry && isVisible(entry) ? entry : null;
 }
 
 function preferredIn(scope) {
@@ -117,19 +127,28 @@ function focus(el) {
 }
 
 function scrollIntoViewNicely(el) {
-  // Horizontal: center within the nearest scrollable row.
+  // Horizontal: keep the focused card at the row's start edge (its left
+  // padding), like TV launchers do, so the eye never has to chase focus.
   const row = el.closest('.meta-row');
   if (row) {
-    const target = el.offsetLeft - (row.clientWidth - el.offsetWidth) / 2;
-    row.scrollTo({ left: Math.max(0, target), behavior: 'smooth' });
+    const pad = parseFloat(getComputedStyle(row).paddingLeft) || 0;
+    row.scrollTo({ left: Math.max(0, el.offsetLeft - pad), behavior: 'smooth' });
   }
   // Vertical: center within the nearest vertically scrollable ancestor.
+  // Containers marked data-scroll="start" pin the focused row section to
+  // their top instead (Home: rows slide up under the fixed hero).
   let p = el.parentElement;
   while (p && p !== document.body) {
     const canScroll = p.scrollHeight > p.clientHeight + 4;
-    if (canScroll && (p.classList.contains('screen') || p.classList.contains('modal-body') || p === row?.parentElement)) {
-      const elTop = offsetTopWithin(el, p);
-      const target = elTop - (p.clientHeight - el.offsetHeight) / 2;
+    const pinStart = p.dataset.scroll === 'start';
+    if (canScroll && (pinStart || p.classList.contains('screen') || p.classList.contains('modal-body') || p === row?.parentElement)) {
+      let target;
+      if (pinStart) {
+        target = offsetTopWithin(el.closest('.row-section') || el, p);
+      } else {
+        const elTop = offsetTopWithin(el, p);
+        target = elTop - (p.clientHeight - el.offsetHeight) / 2;
+      }
       p.scrollTo({ top: Math.max(0, target), behavior: 'smooth' });
       break;
     }

@@ -1,6 +1,8 @@
 // Small DOM helpers, toasts and modal management shared by all screens.
 
 import { Nav } from './nav.js';
+import { backdropUrl, lazyBackground, logoUrl, metaFacts } from './art.js';
+import { icon } from './icons.js';
 
 export function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
@@ -109,21 +111,60 @@ export function confirmModal(title, { okLabel = 'OK', cancelLabel = 'Cancel', da
 
 // ---- meta cards ----------------------------------------------------------
 
-export function metaCard(meta, { onSelect, progress } = {}) {
-  const poster = el('div', { class: 'poster' });
-  if (meta.poster) poster.style.backgroundImage = `url("${meta.poster}")`;
-  else poster.append(el('div', { class: 'fallback-name', text: meta.name || meta.id }));
-  const card = el(
-    'button',
-    { class: 'focusable meta-card' },
-    poster,
-    progress !== undefined && progress !== null
-      ? el('div', { class: 'progress-strip' }, el('div', { style: `width:${Math.round(progress * 100)}%` }))
-      : null,
-    el('div', { class: 'card-name', text: meta.name || meta.id })
-  );
+export function progressBar(progress) {
+  const pct = Math.round(Math.max(0, Math.min(1, progress)) * 100);
+  return el('div', { class: 'progress-strip' }, el('div', { style: `width:${pct}%` }));
+}
+
+// A 2:3 poster card (title shown only while focused), or with `wide` a 16:9
+// backdrop card with its title and `sub` line drawn on the artwork.
+// The meta rides along as card._meta for screens that react to focus.
+export function metaCard(meta, { onSelect, progress, wide = false, sub } = {}) {
+  const name = meta.name || meta.id;
+  const art = el('div', { class: 'poster' });
+  const url = wide ? backdropUrl(meta) : meta.poster;
+  if (url) lazyBackground(art, url);
+  if (wide) {
+    art.append(el('div', { class: 'card-shade' }),
+      el('div', { class: 'card-info' },
+        el('div', { class: 'card-name', text: name }),
+        sub ? el('div', { class: 'card-sub', text: sub }) : null));
+  } else if (!meta.poster) {
+    art.append(el('div', { class: 'fallback-name', text: name }));
+  }
+  if (progress !== undefined && progress !== null) art.append(progressBar(progress));
+  const card = el('button', { class: `focusable meta-card${wide ? ' wide' : ''}` },
+    art,
+    wide ? null : el('div', { class: 'card-name', text: name }));
+  card._meta = meta;
   if (onSelect) card.addEventListener('click', () => onSelect(meta));
   return card;
+}
+
+// The title as logo artwork, falling back to the name in large type. The name
+// is always in the DOM (hidden once a logo loads). Pass logoLoaded: true when
+// the logo is already preloaded so it shows without a flash of text.
+export function titleArt(meta, { tag = 'div', cls = '', logoLoaded = false } = {}) {
+  const name = meta.name || meta.id;
+  const wrap = el(tag, { class: `title-art ${cls}`.trim() });
+  const url = logoUrl(meta);
+  if (url) {
+    const img = el('img', { class: 'title-logo', alt: name, decoding: 'async' });
+    if (logoLoaded) wrap.classList.add('has-logo');
+    else img.addEventListener('load', () => wrap.classList.add('has-logo'));
+    img.addEventListener('error', () => { wrap.classList.remove('has-logo'); img.remove(); });
+    img.src = url;
+    wrap.append(img);
+  }
+  wrap.append(el('div', { class: 'title-text', text: name }));
+  return wrap;
+}
+
+// Year · runtime · ★ rating · genres, as dot-separated text or as chips.
+export function factsRow(meta, { chips = false, cls = '' } = {}) {
+  return el('div', { class: `facts ${cls}`.trim() },
+    metaFacts(meta).map((f) => el('span', { class: `${chips ? 'chip' : 'fact'}${f.kind ? ' ' + f.kind : ''}` },
+      f.kind === 'rating' ? icon('star') : null, f.text)));
 }
 
 export function formatTime(seconds) {

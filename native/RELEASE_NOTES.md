@@ -1,3 +1,14 @@
+### 0.3.0
+- **New look.** Redesigned for the 10-foot screen in the style of current streaming apps: near-black background, one accent colour, the Inter font (bundled), larger rounded cards, and a 5% TV-safe margin.
+- **Home hero.** The focused title's backdrop, logo, year · runtime · rating · genres and synopsis fill the top of Home and follow focus along the rows. Play and Details are one press Up.
+- **Poster rows.** Focused posters grow with a soft glow, and the title shows only on the focused card. Continue Watching uses wide backdrop cards with a progress bar and time left.
+- **Slim nav rail.** Icons only; labels slide in when it has focus, and Left always lands on the current screen's item. All icons are now drawn as SVG, so nothing shows up as an empty box on TV boxes without emoji fonts (this fixes the Library icon).
+- **Title page.** Full-screen backdrop, logo, fact chips and Play/Resume. Series get season chips and episode cards with thumbnail, runtime, air date and progress; Play starts S1 E1 when there's nothing to resume.
+- **Search.** Top matches you can reach from the keyboard with →, and your recent searches while the query is empty.
+- Search, Discover, Library, Settings, Add-ons, dialogs and the player controls restyled to match. Posters load lazily, and animations stay light for low-power boxes.
+
+---
+
 ### 0.2.3
 - Fix the video not showing while it plays (audio and the clock ran, but the stream picker stayed on screen). The UI's last frame was never cleared once the page went see-through; the web view now stays opaque until playback starts.
 - Fix the video being drawn upside down.

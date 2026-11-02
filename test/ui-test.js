@@ -85,9 +85,34 @@ function check(name, cond, info = '') {
   await key('ArrowLeft');
   check('ArrowLeft moves back', (await focusedText()) === before);
 
-  // ---- Left from leftmost card reaches the sidebar ----
+  // ---- Hero follows focus (debounced) and is one press Up ----
+  const heroId = () => page.evaluate(() => document.querySelector('.screen:not(.hidden) .hero-content')?.dataset.id || '');
+  await page.waitForTimeout(600);
+  check('hero shows the focused title', (await heroId()) === 'mock:movie1', await heroId());
+  await key('ArrowRight');
+  check('hero waits while focus is moving (debounce)', (await heroId()) === 'mock:movie1', await heroId());
+  await page.waitForTimeout(700);
+  check('hero updates when focus moves along the row', (await heroId()) === 'mock:movie2', await heroId());
+  check('hero shows the title name', (await page.locator('.hero-content .title-text').textContent()).includes('Mock Movie 2'));
+  await key('ArrowUp');
+  check('Up from the row reaches the hero Play button', (await focusedClass()).includes('hero-play'), await focusedText());
+  await key('ArrowRight');
+  check('Details sits next to Play', (await focusedClass()).includes('hero-details'), await focusedText());
+  await key('Enter');
+  await page.waitForSelector('.detail-title', { timeout: 10000 });
+  check('hero Details opens the focused title', (await page.locator('.detail-title').textContent()).includes('Mock Movie 2'));
+  await key('Escape');
+  await page.waitForTimeout(300);
+  check('Back returns to the hero button', (await focusedClass()).includes('hero-details'), await focusedText());
+  await key('ArrowDown');
+  check('Down from the hero returns to the card it shows', (await focusedText()).includes('Mock Movie 2'), await focusedText());
+  await key('ArrowLeft');
+  await page.waitForTimeout(400);
+
+  // ---- Left from leftmost card reaches the nav rail, on the current screen ----
   await key('ArrowLeft');
   check('sidebar reachable with Left', (await focusedClass()).includes('sidebar-item'), await focusedText());
+  check('the rail opens on the current screen (Home)', (await focusedText()) === 'Home', await focusedText());
   await shot('02-sidebar');
 
   // ---- Sidebar -> Discover ----
@@ -210,6 +235,10 @@ function check(name, cond, info = '') {
   await key('Enter');
   await page.waitForSelector('.meta-card');
   check('continue watching row on home', (await page.locator('.screen:not(.hidden)').textContent()).includes('Continue Watching'));
+  check('continue watching uses wide cards with progress',
+    await page.locator('.screen:not(.hidden) .meta-card.wide .progress-strip').count() > 0);
+  await page.waitForTimeout(600);
+  await shot('08b-home-continue');
 
   // Series detail: seasons + episodes
   await page.evaluate(() => {
@@ -219,6 +248,17 @@ function check(name, cond, info = '') {
   await key('Enter');
   await page.waitForSelector('.episode-item', { timeout: 10000 });
   check('episode list renders', await page.locator('.episode-item').count() === 3);
+  await page.waitForTimeout(300);
+  check('series Play starts at the first episode', (await focusedText()).includes('Play S1 E1'), await focusedText());
+  await key('ArrowDown');
+  check('Down reaches the season chips', (await focusedClass()).includes('season-chip'), await focusedText());
+  await key('ArrowRight');
+  await key('Enter');
+  check('a season chip switches the episodes', (await page.locator('.episode-item').first().textContent()).includes('Season 2'));
+  check('focus stays on the season chip', (await focusedText()) === 'Season 2', await focusedText());
+  await key('ArrowDown');
+  check('Down reaches the episode cards', (await focusedClass()).includes('episode-item'), await focusedText());
+  await page.waitForTimeout(300);
   await shot('09-series');
 
   // ---- Type-anywhere search: pressing a letter jumps into Search ----
@@ -240,6 +280,8 @@ function check(name, cond, info = '') {
   await page.keyboard.type('series', { delay: 80 }); // query: "mock series"
   await page.waitForTimeout(1400); // debounce + fetch
   check('live results appear while typing', (await page.locator('.screen:not(.hidden)').textContent()).includes('Mock Series'));
+  check('top matches list the series while typing',
+    (await page.locator('.search-match').allTextContents()).some((t) => t.includes('Mock Series')));
   await shot('10-osk');
 
   // Paste with Ctrl+V
@@ -260,14 +302,47 @@ function check(name, cond, info = '') {
   await page.waitForTimeout(1200);
   const searchText = await page.locator('.screen:not(.hidden)').textContent();
   check('search finds the series', searchText.includes('Mock Series'), searchText.slice(0, 120));
-  check('a result card is focused after Done', (await focusedClass()).includes('meta-card'), await focusedText());
+  check('a top match is focused after Done', (await focusedClass()).includes('search-match'), await focusedText());
   await shot('11-search-results');
+
+  // ---- Remote only: → from the keyboard reaches the matches, OK opens one ----
+  await page.evaluate(() => [...document.querySelectorAll('.osk-key')].find((k) => k.textContent === '0').focus());
+  await key('ArrowRight');
+  check('→ from the keyboard moves into the top matches', (await focusedClass()).includes('search-match'), await focusedText());
+  await key('Enter');
+  await page.waitForSelector('.detail-title', { timeout: 10000 });
+  check('OK on a top match opens its detail page', (await page.locator('.detail-title').textContent()).includes('Mock'));
+  check('the search was saved to history', await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('stv.searchHistory') || '[]')[0] === 'mock series'));
+  await key('Escape');
+  await page.waitForTimeout(300);
+  check('Back returns to the search with the query kept', (await page.locator('.osk-display').textContent()).includes('mock series'));
+
+  // ---- Recent searches: an empty query lists them; OK reruns one ----
+  await page.evaluate(() => document.querySelector('[data-screen="search"]').focus());
+  await key('Enter');
+  await page.waitForSelector('.search-recent', { timeout: 5000 });
+  check('recent searches are listed', (await page.locator('.search-recent').first().textContent()).includes('mock series'));
+  await page.evaluate(() => document.querySelector('.search-recent').focus());
+  await key('Enter');
+  await page.waitForSelector('.search-match', { timeout: 8000 });
+  check('OK on a recent search runs it again', (await page.locator('.osk-display').textContent()).includes('mock series'));
+  check('focus lands on the first match', (await focusedClass()).includes('search-match'), await focusedText());
+  await shot('12-search-history');
 
   // ---- Settings + addons reachable ----
   await page.evaluate(() => document.querySelector('[data-screen="settings"]').focus());
   await key('Enter');
   await page.waitForSelector('.list-item');
   check('settings renders', (await page.locator('.screen:not(.hidden)').textContent()).includes('Streaming server'));
+  await shot('12c-settings');
+  await page.evaluate(() => document.querySelector('[data-screen="library"]').focus());
+  await key('Enter');
+  await page.waitForSelector('.meta-grid .meta-card', { timeout: 5000 });
+  check('library lists the watched title', (await page.locator('.meta-grid .meta-card').first().textContent()).includes('Mock Movie 1'));
+  check('library card is focused', (await focusedClass()).includes('meta-card'), await focusedText());
+  await page.waitForTimeout(300);
+  await shot('12d-library');
   await page.evaluate(() => document.querySelector('[data-screen="addons"]').focus());
   await key('Enter');
   await page.waitForTimeout(400);

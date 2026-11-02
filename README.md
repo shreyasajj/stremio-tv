@@ -8,11 +8,22 @@ mouse. This app speaks the same **Stremio addon protocol** — so all your addon
 including **AIOStreams**, work exactly the same — but the whole interface is built for a
 remote: arrow keys, OK, and Back are all you need.
 
+![Home: poster rows from your addons](docs/screenshots/home.jpg)
+
+| | |
+| --- | --- |
+| ![Title page](docs/screenshots/detail.jpg) | ![Search with top matches](docs/screenshots/search.jpg) |
+| **Title page** — Play / Resume, seasons and episodes | **Search** — results while you type; → jumps into the matches |
+| ![Player controls over the video](docs/screenshots/player.jpg) | |
+| **Player** — libmpv video under the remote-friendly controls (test pattern) | |
+
+<sub>Screenshots show public-domain films, with metadata and artwork from Cinemeta.</sub>
+
 ## Features
 
 - **Always fullscreen** — Electron kiosk window; if the compositor drops fullscreen it re-enters it.
 - **100% arrow-key navigable** — a spatial-navigation engine drives every screen; nothing needs a pointer.
-- **Sidebar** — press **Left** from anywhere to reach Search / Home / Discover / Library / Add-ons / Settings.
+- **Nav rail** — press **Left** from anywhere to reach Search / Home / Discover / Library / Add-ons / Settings.
 - **Full addon support** — install any addon by manifest URL (AIOStreams, Torrentio, Cinemeta, …) or
   **import your addon collection from your Stremio account**.
 - **YouTube-TV-style player**:
@@ -22,10 +33,12 @@ remote: arrow keys, OK, and Back are all you need.
   - **Back** → hide controls / stop playback (progress is saved)
 - **Continue Watching** — progress is stored locally; resume from Home, Library, or the title page.
 - **Subtitles** — embedded tracks plus subtitle addons (e.g. OpenSubtitles), with adjustable size.
-- **Type-anywhere search** — press any letter on any screen (with a physical/HDMI-CEC keyboard)
-  and you land in Search with the keyboard open; results update live as you type, no need to
-  press Done. Inside the on-screen keyboard, **Backspace deletes** (Esc closes) and you can
-  **paste** with Ctrl+V or the keyboard's Paste key — handy for long AIOStreams URLs.
+- **Search built for the remote** — the on-screen keyboard sits next to a **Top matches** list
+  that updates as you type: press **Right** to move into it and **OK** to open a title, no need
+  to press Done. Full result rows sit below. With an empty query you get your **recent
+  searches** (OK runs one again). Press any letter on any screen (physical/HDMI-CEC keyboard)
+  to land in Search with it typed; **Backspace deletes**, and you can **paste** with Ctrl+V or
+  the keyboard's Paste key — handy for long AIOStreams URLs.
 - **Series support** — season picker, episode list, auto "next episode" (binge groups auto-pick the same source).
 
 ## Native build (Qt + libmpv) — recommended
@@ -63,7 +76,7 @@ To run without installing: `npm install && npm start`.
 
 1. On first start the app installs the default **Cinemeta** (catalogs/metadata) and
    **OpenSubtitles** addons.
-2. Open **Add-ons** in the sidebar → **Add addon by URL** → enter your AIOStreams manifest
+2. Open **Add-ons** in the left nav rail → **Add addon by URL** → enter your AIOStreams manifest
    URL (the `https://…/manifest.json` link from your AIOStreams configuration page —
    `stremio://` links work too).
    Or use **Import from Stremio account** to pull everything you already have configured.

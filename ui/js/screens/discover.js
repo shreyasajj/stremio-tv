@@ -3,6 +3,7 @@
 import { el, metaCard, toast, pickerModal } from '../ui.js';
 import { browsableCatalogs, getCatalog, genreOptions } from '../addons.js';
 import { Nav } from '../nav.js';
+import { icon } from '../icons.js';
 
 const PAGE = 50;
 
@@ -18,8 +19,10 @@ export async function render({ router }) {
 
   const state = { index: 0, genre: '', skip: 0, loading: false, exhausted: false };
 
-  const catalogBtn = el('button', { class: 'focusable btn', 'data-nav-default': '' });
-  const genreBtn = el('button', { class: 'focusable btn' });
+  const catalogLabelEl = el('span');
+  const genreLabelEl = el('span');
+  const catalogBtn = el('button', { class: 'focusable btn', 'data-nav-default': '' }, catalogLabelEl, icon('chevronDown'));
+  const genreBtn = el('button', { class: 'focusable btn' }, genreLabelEl, icon('chevronDown'));
   const grid = el('div', { class: 'meta-grid' });
   root.append(el('div', { class: 'selector-bar' }, catalogBtn, genreBtn), grid);
 
@@ -30,9 +33,9 @@ export async function render({ router }) {
   }
 
   function refreshButtons() {
-    catalogBtn.textContent = '▾ ' + catalogLabel(current());
+    catalogLabelEl.textContent = catalogLabel(current());
     const genres = genreOptions(current().catalog);
-    genreBtn.textContent = '▾ ' + (state.genre || 'All genres');
+    genreLabelEl.textContent = state.genre || 'All genres';
     genreBtn.style.display = genres.length ? '' : 'none';
   }
 
