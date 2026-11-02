@@ -19,11 +19,14 @@ export function logoUrl(meta) {
   return imdb ? `${METAHUB}/logo/medium/${imdb}/img` : null;
 }
 
+// Backdrop art, or null. Never the poster: a 2:3 poster stretched to fill the
+// screen looks poor, and in Qt WebEngine with software GL a stretched
+// (SVG) poster under the cards' focus-scale animations crashed the renderer.
 export function backdropUrl(meta) {
   if (meta?.background) return meta.background;
   const imdb = imdbId(meta);
   if (imdb) return `${METAHUB}/background/medium/${imdb}/img`;
-  return meta?.poster || null;
+  return null;
 }
 
 // "2019 · 2h 10m · ★ 7.8 · Drama, Crime" as separate pieces.
