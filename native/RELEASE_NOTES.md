@@ -1,3 +1,10 @@
+### 0.2.2
+- Fix video playing hidden behind the stream-selection dialogs.
+- Stop duplicate addon searches from being fired.
+- Remote navigation and addon/stream list UI tweaks.
+
+---
+
 ### 0.2.1
 - First release built from `main`. The app itself is unchanged from 0.2.0.
 - Releases are now published only for tags on `main`, after the end-to-end, UI and Flatpak checks pass.
