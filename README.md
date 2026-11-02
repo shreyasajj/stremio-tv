@@ -17,6 +17,8 @@ remote: arrow keys, OK, and Back are all you need.
 | ![Player controls over the video](docs/screenshots/player.jpg) | |
 | **Player** — libmpv video under the remote-friendly controls (test pattern) | |
 
+<sub>Screenshots show public-domain films, with metadata and artwork from Cinemeta.</sub>
+
 ## Features
 
 - **Always fullscreen** — Electron kiosk window; if the compositor drops fullscreen it re-enters it.
