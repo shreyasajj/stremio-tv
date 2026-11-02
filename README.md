@@ -21,7 +21,7 @@ remote: arrow keys, OK, and Back are all you need.
 
 - **Always fullscreen** — Electron kiosk window; if the compositor drops fullscreen it re-enters it.
 - **100% arrow-key navigable** — a spatial-navigation engine drives every screen; nothing needs a pointer.
-- **Sidebar** — press **Left** from anywhere to reach Search / Home / Discover / Library / Add-ons / Settings.
+- **Nav rail** — press **Left** from anywhere to reach Search / Home / Discover / Library / Add-ons / Settings.
 - **Full addon support** — install any addon by manifest URL (AIOStreams, Torrentio, Cinemeta, …) or
   **import your addon collection from your Stremio account**.
 - **YouTube-TV-style player**:
@@ -74,7 +74,7 @@ To run without installing: `npm install && npm start`.
 
 1. On first start the app installs the default **Cinemeta** (catalogs/metadata) and
    **OpenSubtitles** addons.
-2. Open **Add-ons** in the sidebar → **Add addon by URL** → enter your AIOStreams manifest
+2. Open **Add-ons** in the left nav rail → **Add addon by URL** → enter your AIOStreams manifest
    URL (the `https://…/manifest.json` link from your AIOStreams configuration page —
    `stremio://` links work too).
    Or use **Import from Stremio account** to pull everything you already have configured.
