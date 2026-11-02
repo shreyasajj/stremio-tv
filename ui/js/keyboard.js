@@ -19,114 +19,134 @@ const ROWS_SYMBOLS = [
   ['.', '@', '€', '£', '№', '°', '§', '·', '…', ' '],
 ];
 
-// oskPrompt: open a modal keyboard, resolve with the final string (null if backed out).
-// opts: { title, value, password, onChange (live, for search),
-//         dock: 'left' keeps the right side of the screen visible (live results) }
-export function oskPrompt({ title = 'Enter text', value = '', password = false, onChange, dock } = {}) {
-  return new Promise((resolve) => {
-    let text = value;
-    let layer = 'lower'; // lower | upper | symbols
-    let done = false;
+// createKeyboard: the keyboard itself (text display + key rows), for embedding
+// in a screen or a dialog.
+// opts: { value, password, placeholder, onChange(text), onDone(text) }
+// Returns { element, text(), setText(t), focus(), handleKey(e) }; handleKey
+// types physical keys into it and returns true when it consumed the event.
+export function createKeyboard({ value = '', password = false, placeholder, onChange, onDone } = {}) {
+  let text = value;
+  let layer = 'lower'; // lower | upper | symbols
 
-    const display = el('div', { class: 'osk-display' });
-    const rowsHost = el('div', { class: 'osk-rows' });
+  const display = el('div', { class: 'osk-display' });
+  const rowsHost = el('div', { class: 'osk-rows' });
+  const element = el('div', { class: 'osk-wrap' }, display, el('div', { class: 'osk' }, rowsHost));
+
+  function renderDisplay() {
+    display.innerHTML = '';
+    if (!text) {
+      display.append(el('span', { class: 'osk-placeholder', text: placeholder || (password ? 'Password' : 'Type with the arrow keys…') }));
+    } else {
+      display.append(password ? '•'.repeat(text.length) : text);
+    }
+    display.append(el('span', { class: 'caret' }));
+  }
+
+  function setText(t, { silent = false } = {}) {
+    text = t;
+    renderDisplay();
+    if (!silent && onChange) onChange(text);
+  }
+
+  function key(label, action, cls = '') {
+    const b = el('button', { class: `focusable osk-key ${cls}`, text: label });
+    b.addEventListener('click', action);
+    return b;
+  }
+
+  async function paste() {
+    let clip = '';
+    try {
+      if (window.shell?.readClipboard) clip = await window.shell.readClipboard();
+      else if (navigator.clipboard?.readText) clip = await navigator.clipboard.readText();
+    } catch { /* clipboard unavailable */ }
+    clip = (clip || '').replace(/[\r\n]+/g, ' ').trim();
+    if (clip) setText(text + clip);
+    else toast('Clipboard is empty');
+  }
+
+  function renderRows() {
+    // Keep focus on the same key position when switching layers.
+    const focused = rowsHost.contains(document.activeElement) ? [...rowsHost.querySelectorAll('.osk-key')].indexOf(document.activeElement) : -1;
+    rowsHost.innerHTML = '';
+    const rows = layer === 'upper' ? ROWS_UPPER : layer === 'symbols' ? ROWS_SYMBOLS : ROWS_LOWER;
+    rows.forEach((row) => {
+      const r = el('div', { class: 'osk-row' });
+      row.forEach((ch) => r.append(key(ch === ' ' ? '␣' : ch, () => setText(text + ch))));
+      rowsHost.append(r);
+    });
+    const bottom = el('div', { class: 'osk-row' });
+    bottom.append(
+      key(layer === 'upper' ? 'abc' : 'ABC', () => { layer = layer === 'upper' ? 'lower' : 'upper'; renderRows(); }, layer === 'upper' ? 'on' : ''),
+      key('#+=', () => { layer = layer === 'symbols' ? 'lower' : 'symbols'; renderRows(); }, layer === 'symbols' ? 'on' : ''),
+      key('Space', () => setText(text + ' '), 'wide'),
+      key('Paste', paste),
+      key('⌫', () => setText(text.slice(0, -1))),
+      key('Clear', () => setText('')),
+      key('Done', () => onDone && onDone(text), 'wide')
+    );
+    rowsHost.append(bottom);
+    if (focused >= 0) Nav.focus(rowsHost.querySelectorAll('.osk-key')[focused]);
+  }
+
+  // Physical keyboard: printable keys type, Backspace deletes (it must NOT
+  // fall through to "go back"), Ctrl+V pastes. Enter on a focused key is left
+  // to Nav so it activates that key.
+  function handleKey(e) {
+    if (e.key === 'Enter' && document.activeElement?.classList.contains('osk-key')) return false;
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') { paste(); return true; }
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      setText(text + e.key);
+      return true;
+    }
+    if (e.key === 'Backspace' || e.key === 'Delete') { setText(text.slice(0, -1)); return true; }
+    return false;
+  }
+
+  renderDisplay();
+  renderRows();
+  return {
+    element,
+    text: () => text,
+    setText,
+    handleKey,
+    // A sensible starting key: the first letter row.
+    focus() {
+      const first = rowsHost.querySelectorAll('.osk-row')[1]?.querySelector('.osk-key');
+      if (first) Nav.focus(first);
+    },
+    firstLetterKey: () => rowsHost.querySelectorAll('.osk-row')[1]?.querySelector('.osk-key'),
+  };
+}
+
+// oskPrompt: open a modal keyboard, resolve with the final string (null if backed out).
+// opts: { title, value, password }
+export function oskPrompt({ title = 'Enter text', value = '', password = false } = {}) {
+  return new Promise((resolve) => {
+    let done = false;
+    const kb = createKeyboard({
+      value,
+      password,
+      onDone: (text) => {
+        done = true;
+        handle.close();
+        resolve(text);
+      },
+    });
     const modal = el(
       'div',
       { class: 'modal', style: 'min-width: 780px' },
       el('div', { class: 'modal-title', text: title }),
-      display,
-      el('div', { class: 'osk' }, rowsHost)
+      kb.element
     );
 
-    function renderDisplay() {
-      display.innerHTML = '';
-      if (!text) {
-        display.append(el('span', { class: 'osk-placeholder', text: password ? 'Password' : 'Type with the arrow keys…' }));
-      } else {
-        display.append(password ? '•'.repeat(text.length) : text);
-      }
-      display.append(el('span', { class: 'caret' }));
-    }
-
-    function setText(t) {
-      text = t;
-      renderDisplay();
-      if (onChange) onChange(text);
-    }
-
-    function key(label, action, cls = '') {
-      const b = el('button', { class: `focusable osk-key ${cls}`, text: label });
-      b.addEventListener('click', action);
-      return b;
-    }
-
-    async function paste() {
-      let clip = '';
-      try {
-        if (window.shell?.readClipboard) clip = await window.shell.readClipboard();
-        else if (navigator.clipboard?.readText) clip = await navigator.clipboard.readText();
-      } catch { /* clipboard unavailable */ }
-      clip = (clip || '').replace(/[\r\n]+/g, ' ').trim();
-      if (clip) setText(text + clip);
-      else toast('Clipboard is empty');
-    }
-
-    function renderRows() {
-      rowsHost.innerHTML = '';
-      const rows = layer === 'upper' ? ROWS_UPPER : layer === 'symbols' ? ROWS_SYMBOLS : ROWS_LOWER;
-      rows.forEach((row) => {
-        const r = el('div', { class: 'osk-row' });
-        row.forEach((ch) => r.append(key(ch === ' ' ? '␣' : ch, () => setText(text + ch))));
-        rowsHost.append(r);
-      });
-      const bottom = el('div', { class: 'osk-row' });
-      bottom.append(
-        key(layer === 'upper' ? 'abc' : 'ABC', () => { layer = layer === 'upper' ? 'lower' : 'upper'; renderRows(); }, layer === 'upper' ? 'on' : ''),
-        key('#+=', () => { layer = layer === 'symbols' ? 'lower' : 'symbols'; renderRows(); }, layer === 'symbols' ? 'on' : ''),
-        key('Space', () => setText(text + ' '), 'wide'),
-        key('Paste', paste),
-        key('⌫', () => setText(text.slice(0, -1))),
-        key('Clear', () => setText('')),
-        key('Done', finish, 'wide')
-      );
-      rowsHost.append(bottom);
-    }
-
-    function finish() {
-      done = true;
-      handle.close();
-      resolve(text);
-    }
-
-    // Physical keyboard passthrough while the OSK is open.
-    function physicalKeys(e) {
-      if (e.key === 'Enter' && document.activeElement?.classList.contains('osk-key')) {
-        return false; // let Nav activate the focused key
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') { paste(); return true; }
-      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        setText(text + e.key);
-        return true;
-      }
-      // Backspace edits the text — it must NOT fall through to "go back",
-      // which would close the keyboard.
-      if (e.key === 'Backspace' || e.key === 'Delete') { setText(text.slice(0, -1)); return true; }
-      return false;
-    }
-
-    Nav.pushKeyHandler(physicalKeys);
+    Nav.pushKeyHandler(kb.handleKey);
     const handle = openModal(modal, {
-      backdropClass: dock === 'left' ? 'dock-left' : '',
       onClose: () => {
-        Nav.popKeyHandler(physicalKeys);
+        Nav.popKeyHandler(kb.handleKey);
         if (!done) { done = true; resolve(null); }
       },
     });
-
-    renderDisplay();
-    renderRows();
-    // Start focus on a sensible key (first letter row).
-    const firstKey = rowsHost.querySelectorAll('.osk-row')[1]?.querySelector('.osk-key');
-    if (firstKey) Nav.focus(firstKey);
+    kb.focus();
   });
 }

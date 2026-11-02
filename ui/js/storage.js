@@ -1,11 +1,14 @@
-// Persistence via localStorage: installed addons, settings, watch progress.
+// Persistence via localStorage: installed addons, settings, watch progress,
+// search history.
 
 const KEYS = {
   addons: 'stv.addons',
   settings: 'stv.settings',
   library: 'stv.library',
   auth: 'stv.auth',
+  searchHistory: 'stv.searchHistory',
 };
+const SEARCH_HISTORY_MAX = 20;
 
 function read(key, fallback) {
   try {
@@ -44,6 +47,16 @@ export const Storage = {
   getAuth: () => read(KEYS.auth, null),
   setAuth: (auth) => write(KEYS.auth, auth),
   clearAuth: () => localStorage.removeItem(KEYS.auth),
+
+  // ---- search history: newest first, no duplicates (case-insensitive) ----
+  getSearchHistory: () => read(KEYS.searchHistory, []),
+  addSearchHistory(query) {
+    const q = (query || '').trim();
+    if (q.length < 2) return;
+    const rest = this.getSearchHistory().filter((h) => h.toLowerCase() !== q.toLowerCase());
+    write(KEYS.searchHistory, [q, ...rest].slice(0, SEARCH_HISTORY_MAX));
+  },
+  clearSearchHistory: () => localStorage.removeItem(KEYS.searchHistory),
 
   // ---- library / watch progress ----
   // entries keyed `${type}:${id}`:

@@ -240,6 +240,8 @@ function check(name, cond, info = '') {
   await page.keyboard.type('series', { delay: 80 }); // query: "mock series"
   await page.waitForTimeout(1400); // debounce + fetch
   check('live results appear while typing', (await page.locator('.screen:not(.hidden)').textContent()).includes('Mock Series'));
+  check('top matches list the series while typing',
+    (await page.locator('.search-match').allTextContents()).some((t) => t.includes('Mock Series')));
   await shot('10-osk');
 
   // Paste with Ctrl+V
@@ -260,8 +262,33 @@ function check(name, cond, info = '') {
   await page.waitForTimeout(1200);
   const searchText = await page.locator('.screen:not(.hidden)').textContent();
   check('search finds the series', searchText.includes('Mock Series'), searchText.slice(0, 120));
-  check('a result card is focused after Done', (await focusedClass()).includes('meta-card'), await focusedText());
+  check('a top match is focused after Done', (await focusedClass()).includes('search-match'), await focusedText());
   await shot('11-search-results');
+
+  // ---- Remote only: → from the keyboard reaches the matches, OK opens one ----
+  await page.evaluate(() => [...document.querySelectorAll('.osk-key')].find((k) => k.textContent === '0').focus());
+  await key('ArrowRight');
+  check('→ from the keyboard moves into the top matches', (await focusedClass()).includes('search-match'), await focusedText());
+  await key('Enter');
+  await page.waitForSelector('.detail-title', { timeout: 10000 });
+  check('OK on a top match opens its detail page', (await page.locator('.detail-title').textContent()).includes('Mock'));
+  check('the search was saved to history', await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('stv.searchHistory') || '[]')[0] === 'mock series'));
+  await key('Escape');
+  await page.waitForTimeout(300);
+  check('Back returns to the search with the query kept', (await page.locator('.osk-display').textContent()).includes('mock series'));
+
+  // ---- Recent searches: an empty query lists them; OK reruns one ----
+  await page.evaluate(() => document.querySelector('[data-screen="search"]').focus());
+  await key('Enter');
+  await page.waitForSelector('.search-recent', { timeout: 5000 });
+  check('recent searches are listed', (await page.locator('.search-recent').first().textContent()).includes('mock series'));
+  await page.evaluate(() => document.querySelector('.search-recent').focus());
+  await key('Enter');
+  await page.waitForSelector('.search-match', { timeout: 8000 });
+  check('OK on a recent search runs it again', (await page.locator('.osk-display').textContent()).includes('mock series'));
+  check('focus lands on the first match', (await focusedClass()).includes('search-match'), await focusedText());
+  await shot('12-search-history');
 
   // ---- Settings + addons reachable ----
   await page.evaluate(() => document.querySelector('[data-screen="settings"]').focus());

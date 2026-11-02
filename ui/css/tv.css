@@ -234,21 +234,28 @@ h2.row-title .row-sub { color: var(--text-dim); font-weight: 400; font-size: 20p
   box-shadow: 0 30px 80px rgba(0,0,0,.6);
 }
 .modal-title { font-size: 28px; font-weight: 700; margin-bottom: 20px; }
-/* Docked-left keyboard: keep the right side of the screen visible so live
-   search results show up while you type. */
-.modal-backdrop.dock-left {
-  justify-content: flex-start;
-  background: linear-gradient(90deg, rgba(4,5,10,.95) 0%, rgba(4,5,10,.88) 44%, rgba(4,5,10,.15) 62%);
-}
-.modal-backdrop.dock-left .modal { margin-left: 56px; min-width: 640px; max-width: 46vw; }
-/* While the docked keyboard is open, the search screen pushes its results
-   into the visible right half. */
-.screen.osk-docked { padding-left: 52vw; transition: padding-left .2s; }
 .modal-body { overflow-y: auto; scroll-behavior: smooth; }
 .modal .list-item.selected .li-title::before { content: "\2713  "; color: var(--accent-2); }
 
 /* ---- On-screen keyboard ---- */
 .osk { margin-top: 14px; }
+
+/* ---- Search: keyboard left, top matches / recent searches right ---- */
+.search-top { display: grid; grid-template-columns: minmax(560px, 46%) 1fr; gap: 40px; align-items: start; }
+.search-top .osk-display { margin-bottom: 0; }
+.search-side h2.row-title { margin-top: 0; }
+.search-list .list-item { margin-bottom: 10px; padding: 12px 18px; }
+.search-match { display: flex; align-items: center; gap: 18px; }
+.search-thumb {
+  flex: none;
+  width: 54px;
+  height: 80px;
+  border-radius: 8px;
+  background: var(--bg-card) center / cover no-repeat;
+}
+.search-match-text { min-width: 0; }
+.search-match .li-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.search-results { margin-top: 18px; }
 .osk-display {
   background: var(--bg-card);
   border-radius: 10px;
