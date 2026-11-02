@@ -215,7 +215,8 @@ export function audioTrackDetails(t) {
 // formats mean the encoded bitstream is being passed through untouched.
 export function audioOutputSummary(video) {
   const p = video.audioOut;
-  if (!p || !p.format) return '';
+  // Nothing opened: wrong/missing device, or ALSA device busy.
+  if (!p || !p.format) return 'Output: no audio device opened — check Settings → Audio output device';
   const ao = video.currentAo ? ` via ${video.currentAo}` : '';
   if (String(p.format).startsWith('spdif-')) {
     return `Output: ${p.format.slice(6).toUpperCase()} bitstream passthrough${ao}`;
