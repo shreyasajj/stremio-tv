@@ -1,5 +1,6 @@
 # Linux dev/test image for the native shell: Qt 6.8 + WebEngine + libmpv,
-# plus a headless Weston so the app can run on a real Wayland compositor.
+# plus a headless Weston so the app can run on a real Wayland compositor, and
+# PulseAudio with a null sink so playback produces audio the test can record.
 FROM debian:trixie
 ENV DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -9,5 +10,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       qml6-module-qtwebchannel qml6-module-qtqml-workerscript qt6-wayland \
       libmpv-dev libgl-dev libegl-dev \
       weston mesa-utils libgl1-mesa-dri libegl-mesa0 \
+      pulseaudio pulseaudio-utils \
       nodejs npm ca-certificates fonts-noto-core dbus \
     && rm -rf /var/lib/apt/lists/*

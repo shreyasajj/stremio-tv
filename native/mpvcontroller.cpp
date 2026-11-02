@@ -90,13 +90,27 @@ MpvController::MpvController(QObject *parent) : QObject(parent), core_(std::make
     mpv_set_option_string(h, "sub-auto", "no");
     mpv_set_option_string(h, "audio-display", "no");
     mpv_set_option_string(h, "terminal", "no");
-    mpv_set_option_string(h, "msg-level", "all=warn");
+    // Diagnostics on the box, without a rebuild:
+    //   STREMIO_TV_MPV_LOG=v                     more mpv logging (v, debug, …)
+    //   STREMIO_TV_MPV_OPTIONS="hwdec=no,vo=…"   extra options, applied last
+    const QByteArray logLevel = qEnvironmentVariableIsEmpty("STREMIO_TV_MPV_LOG")
+        ? QByteArrayLiteral("warn") : qgetenv("STREMIO_TV_MPV_LOG");
+    mpv_set_option_string(h, "msg-level", ("all=" + logLevel).constData());
+    for (const QString &opt : qEnvironmentVariable("STREMIO_TV_MPV_OPTIONS").split(u',', Qt::SkipEmptyParts)) {
+        const qsizetype eq = opt.indexOf(u'=');
+        const QByteArray name = opt.left(eq).trimmed().toUtf8();
+        const QByteArray value = eq < 0 ? QByteArrayLiteral("yes") : opt.mid(eq + 1).trimmed().toUtf8();
+        if (mpv_set_option_string(h, name.constData(), value.constData()) < 0)
+            qWarning().noquote() << "Ignoring invalid mpv option" << opt;
+        else
+            qInfo().noquote() << "mpv option" << name + "=" + value;
+    }
     if (mpv_initialize(h) < 0) {
         qWarning() << "mpv_initialize failed";
         mpv_terminate_destroy(h);
         return;
     }
-    mpv_request_log_messages(h, "warn");
+    mpv_request_log_messages(h, logLevel.constData());
     for (const char *name : kObserved)
         mpv_observe_property(h, 0, name, MPV_FORMAT_NODE);
 
@@ -206,6 +220,16 @@ void MpvController::processEvents() {
             emit propertyChanged(QStringLiteral("duration"), getProperty(QStringLiteral("duration")));
             emit fileLoaded();
             break;
+        case MPV_EVENT_VIDEO_RECONFIG: {
+            // One line per video start: which decoder path the frames take.
+            const QVariantMap params = getProperty(QStringLiteral("video-params")).toMap();
+            if (params.isEmpty()) break;
+            qInfo().noquote() << "[mpv] video" << params.value("w").toString() + "x" + params.value("h").toString()
+                              << params.value("pixelformat").toString()
+                              << "codec" << getProperty(QStringLiteral("video-codec")).toString()
+                              << "hwdec" << getProperty(QStringLiteral("hwdec-current")).toString();
+            break;
+        }
         case MPV_EVENT_END_FILE: {
             auto *end = static_cast<mpv_event_end_file *>(event->data);
             const QString error = end->reason == MPV_END_FILE_REASON_ERROR

@@ -99,6 +99,12 @@ void ShellBridge::setPlaybackActive(bool playing) {
     updateInhibit();
 }
 
+void ShellBridge::setVideoLayer(bool visible) {
+    if (videoLayer_ == visible) return;
+    videoLayer_ = visible;
+    emit videoLayerChanged();
+}
+
 void ShellBridge::updateInhibit() {
 #ifdef STREMIO_TV_HAVE_DBUS
     if (inhibitPending_) return; // re-evaluated when the pending call returns
