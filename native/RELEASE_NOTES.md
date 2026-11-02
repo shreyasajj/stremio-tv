@@ -1,3 +1,10 @@
+### 0.2.1
+- First release built from `main`. The app itself is unchanged from 0.2.0.
+- Releases are now published only for tags on `main`, after the end-to-end, UI and Flatpak checks pass.
+- Dependabot now keeps npm and GitHub Actions dependencies up to date, auto-merging minor and patch updates once CI passes.
+
+---
+
 First release of the **native Stremio TV shell**. It uses the same remote-first UI as before, but plays video through embedded **libmpv** in a native Qt 6 Wayland window instead of Chromium's `<video>`.
 
 ### What's new compared with the Electron build
