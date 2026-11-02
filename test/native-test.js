@@ -11,7 +11,8 @@
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
-const { chromium } = require('playwright-core');
+const { CdpPage } = require('./cdp-page.js');
+const { PNG } = require('playwright-core/lib/utilsBundle');
 const mockAddon = require('./mock-addon.js');
 
 const BIN = process.env.NATIVE_BIN || path.join(__dirname, '..', 'native', 'build', 'stremio-tv-native');
@@ -59,15 +60,13 @@ async function waitFor(fn, { timeout = 15000, interval = 200 } = {}) {
   app.on('exit', (code) => { appExited = true; console.log(`  app exited (${code})`); });
 
   let lastConnectError = null;
-  const browser = await waitFor(() => chromium.connectOverCDP(`http://127.0.0.1:${CDP_PORT}`)
+  const page = await waitFor(() => CdpPage.connect(CDP_PORT, 'index.html')
     .catch((e) => { lastConnectError = e; return null; }), { timeout: 30000, interval: 500 });
-  if (!browser) {
+  if (!page) {
     console.log(appLog.slice(-30).join('\n'));
     throw new Error(`could not attach to the native app over CDP: ${lastConnectError?.message}`);
   }
-  const page = await waitFor(() => browser.contexts().flatMap((c) => c.pages()).find((p) => p.url().includes('index.html')));
-  if (!page) throw new Error('UI page not found');
-  page.on('pageerror', (e) => { console.log('PAGE ERROR:', e.message); failures++; });
+  page.onPageError((msg) => { console.log('PAGE ERROR:', msg); failures++; });
 
   const key = async (k, times = 1, delay = 150) => {
     for (let i = 0; i < times; i++) { await page.keyboard.press(k); await page.waitForTimeout(delay); }
@@ -76,14 +75,27 @@ async function waitFor(fn, { timeout = 15000, interval = 200 } = {}) {
   const mpvGet = (name) => page.evaluate((n) => window.shell.mpv.get(n), name);
   const playerClass = (c) => page.evaluate((cls) => document.getElementById('player-root').classList.contains(cls), c);
   const shot = async (name) => {
-    if (!process.env.SHOTS) return;
     const file = path.join(SHOT_DIR, `native-${name}.png`);
     const ok = await page.evaluate((p) => window.shell.saveScreenshot(p), file);
     if (!ok) console.log(`  (screenshot ${name} failed)`);
+    return ok ? file : null;
+  };
+  // Share of clearly non-black pixels in the centre of a window grab.
+  const litFraction = (file) => {
+    const png = PNG.sync.read(fs.readFileSync(file));
+    let lit = 0, total = 0;
+    for (let y = Math.floor(png.height * 0.3); y < png.height * 0.7; y += 4) {
+      for (let x = Math.floor(png.width * 0.3); x < png.width * 0.7; x += 4) {
+        const i = (y * png.width + x) * 4;
+        if (png.data[i] + png.data[i + 1] + png.data[i + 2] > 60) lit++;
+        total++;
+      }
+    }
+    return lit / total;
   };
 
   // ---- Bridge ----
-  await page.waitForFunction(() => window.shell && window.shell.isNative, null, { timeout: 15000 });
+  await page.waitForFunction(() => window.shell && window.shell.isNative, undefined, { timeout: 15000 });
   check('native bridge exposes window.shell', true);
   check('embedded mpv is available', await page.evaluate(() => !!window.shell.mpv));
 
@@ -97,7 +109,7 @@ async function waitFor(fn, { timeout = 15000, interval = 200 } = {}) {
   await page.reload();
   await page.waitForSelector('.meta-card', { timeout: 15000 });
   await page.waitForTimeout(500);
-  check('home renders the mock catalog', await page.locator('h2.row-title').count() >= 2);
+  check('home renders the mock catalog', await page.count('h2.row-title') >= 2);
   await shot('01-home');
 
   // ---- Remote navigation still works in WebEngine ----
@@ -110,7 +122,7 @@ async function waitFor(fn, { timeout = 15000, interval = 200 } = {}) {
   await page.evaluate(() => document.querySelector('.meta-card').focus());
   await key('Enter');
   await page.waitForSelector('.detail-title', { timeout: 10000 });
-  check('detail screen opens', (await page.locator('.detail-title').textContent()).includes('Mock'));
+  check('detail screen opens', (await page.text('.detail-title')).includes('Mock'));
   await key('Enter');
   await page.waitForSelector('.modal .list-item', { timeout: 10000 });
   await key('Enter'); // first stream: the playable sample
@@ -119,9 +131,12 @@ async function waitFor(fn, { timeout = 15000, interval = 200 } = {}) {
   check('page is transparent over the video',
     await page.evaluate(() => document.documentElement.classList.contains('native-video-playing')));
   check('mpv picked a video output', !!(await mpvGet('video-params')), JSON.stringify(await mpvGet('video-params') || {}).slice(0, 90));
-  check('no HTML <video> element is used', await page.locator('#player-root video').count() === 0);
-  await page.waitForTimeout(1000);
-  await shot('02-playing');
+  check('no HTML <video> element is used', await page.count('#player-root video') === 0);
+  await page.waitForTimeout(1500);
+  const playingShot = await shot('02-playing');
+  // Overlay is hidden in lean-back mode: the centre must be mpv's video.
+  const lit = playingShot ? litFraction(playingShot) : 0;
+  check('video is visible through the transparent UI', lit > 0.2, `${Math.round(lit * 100)}% lit`);
 
   // ---- OK pauses / resumes ----
   await key('Enter');
@@ -152,7 +167,7 @@ async function waitFor(fn, { timeout = 15000, interval = 200 } = {}) {
   check('focus on Subtitles button', (await focusedText()).includes('Subtitles'), await focusedText());
   await key('Enter');
   await page.waitForSelector('.modal');
-  const subText = await page.locator('.modal').textContent();
+  const subText = await page.text('.modal');
   check('subtitle menu lists the addon subtitle', subText.includes('ENG'), subText.slice(0, 80));
   await key('ArrowDown');
   await key('Enter');
@@ -169,7 +184,7 @@ async function waitFor(fn, { timeout = 15000, interval = 200 } = {}) {
   check('focus on Audio button', (await focusedText()).includes('Audio'), await focusedText());
   await key('Enter');
   await page.waitForSelector('.modal');
-  const audioText = await page.locator('.modal').textContent();
+  const audioText = await page.text('.modal');
   check('audio menu lists the track and output path', /Output:/.test(audioText) || /No audio/.test(audioText), audioText.slice(0, 120));
   await shot('05-audio-menu');
   await key('Escape');
@@ -183,14 +198,14 @@ async function waitFor(fn, { timeout = 15000, interval = 200 } = {}) {
   check('page opaque again', !(await page.evaluate(() => document.documentElement.classList.contains('native-video-playing'))));
   const lib = await page.evaluate(() => JSON.parse(localStorage.getItem('stv.library') || '{}'));
   check('watch progress saved', Object.values(lib).some((e) => e.time > 5));
-  check('Resume offered on detail', (await page.locator('.screen:not(.hidden)').textContent()).includes('Resume'));
+  check('Resume offered on detail', (await page.text('.screen:not(.hidden)')).includes('Resume'));
 
   // ---- Resume starts where we left off ----
   await page.evaluate(() => [...document.querySelectorAll('.screen:not(.hidden) .focusable')]
     .find((b) => b.textContent.includes('Resume'))?.focus());
   await key('Enter');
   await page.waitForTimeout(500);
-  if (await page.locator('.modal .list-item').count()) await key('Enter'); // stream picker if shown
+  if (await page.count('.modal .list-item')) await key('Enter'); // stream picker if shown
   const resumed = await waitFor(async () => (await mpvGet('time-pos')) > 10, { timeout: 15000 });
   check('Resume seeks to saved position', !!resumed, `time-pos=${(await mpvGet('time-pos'))?.toFixed(1)}`);
   await key('Escape');
@@ -200,7 +215,7 @@ async function waitFor(fn, { timeout = 15000, interval = 200 } = {}) {
   await page.evaluate(() => document.querySelector('[data-screen="settings"]').focus());
   await key('Enter');
   await page.waitForSelector('.list-item');
-  const settingsText = await page.locator('.screen:not(.hidden)').textContent();
+  const settingsText = await page.text('.screen:not(.hidden)');
   check('settings has audio output device', settingsText.includes('Audio output device'));
   check('settings has surround passthrough', settingsText.includes('Surround passthrough'));
   await shot('06-settings');
@@ -213,7 +228,7 @@ async function waitFor(fn, { timeout = 15000, interval = 200 } = {}) {
   check('proxyFetch returns subtitle text', fetched.ok && fetched.body.includes('-->'), `status ${fetched.status}`);
 
   check('app still running', !appExited);
-  await browser.close().catch(() => {});
+  page.close();
   app.kill('SIGTERM');
   const exited = await waitFor(() => appExited, { timeout: 8000 });
   check('app exits on SIGTERM', !!exited);
