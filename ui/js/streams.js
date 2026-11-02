@@ -30,23 +30,37 @@ function streamLabel(addon, stream) {
   return { name, desc };
 }
 
+// Only one search/pick at a time. Pressing OK again while streams are still
+// loading (AIOStreams can take many seconds) must not start a second search
+// whose dialogs would later pop up over the video.
+let activeFlow = null;
+
 // Entry point. meta required; video required for series (null for movies).
 export async function playFlow(meta, video, { resumeTime, preferBinge } = {}) {
+  if (activeFlow) return;
+  const flow = (activeFlow = { cancelled: false, ctrl: new AbortController() });
+  const finish = () => { if (activeFlow === flow) activeFlow = null; };
+  const cancel = () => { flow.cancelled = true; flow.ctrl.abort(); finish(); };
+
   const targetId = video ? video.id : meta.id;
-  const loading = openLoadingModal('Finding streams…');
+  const loading = openLoadingModal('Finding streams…', cancel);
   let result;
   try {
-    result = await getStreams(meta.type, targetId);
+    result = await getStreams(meta.type, targetId, { signal: flow.ctrl.signal });
   } catch (e) {
+    if (flow.cancelled) return;
     loading.close();
+    finish();
     toast('Could not fetch streams: ' + e.message, 'error');
     return;
   }
+  if (flow.cancelled) return; // user backed out while we were waiting
   loading.close();
   const { streams, errors } = result;
   errors.forEach(({ addon }) => toast(`${addon.manifest.name}: stream request failed`, 'error'));
 
   if (!streams.length) {
+    finish();
     toast('No streams found. Install a streams addon (e.g. AIOStreams) in Add-ons.', 'error', 6000);
     return;
   }
@@ -56,27 +70,47 @@ export async function playFlow(meta, video, { resumeTime, preferBinge } = {}) {
     const match = streams.find(({ stream }) =>
       stream.behaviorHints?.bingeGroup && stream.behaviorHints.bingeGroup === preferBinge && resolveStreamUrl(stream));
     if (match) {
+      finish();
       startPlayback(meta, video, match, { resumeTime });
       return;
     }
   }
 
-  pickStream(meta, video, streams, { resumeTime });
+  pickStream(meta, video, streams, { resumeTime, onDone: finish });
 }
 
-function openLoadingModal(text) {
-  const modal = el('div', { class: 'modal' },
-    el('div', { class: 'modal-title' }, el('span', { class: 'spinner-inline' }), ` ${text}`));
-  return openModal(modal);
+// "Finding streams…": focus moves into the dialog itself (not a button), so
+// extra OK presses while waiting do nothing instead of re-activating the Play
+// button behind it. Back cancels; Cancel is one arrow press away.
+function openLoadingModal(text, onCancel) {
+  const started = Date.now();
+  const status = el('span', { text: ` ${text}` });
+  const cancelBtn = el('button', { class: 'focusable btn', text: 'Cancel' });
+  const modal = el('div', { class: 'modal loading-modal' },
+    el('div', { class: 'modal-title' }, el('span', { class: 'spinner-inline' }), status),
+    el('div', { class: 'btn-row' }, cancelBtn));
+  let userClosed = true;
+  const handle = openModal(modal, { onClose: () => { clearInterval(tick); if (userClosed) onCancel(); } });
+  cancelBtn.addEventListener('click', () => handle.close());
+  modal.setAttribute('tabindex', '-1');
+  modal.focus({ preventScroll: true });
+  // Slow aggregators: show that we are still waiting, and for how long.
+  const tick = setInterval(() => {
+    const s = Math.round((Date.now() - started) / 1000);
+    if (s >= 3) status.textContent = ` ${text} ${s}s`;
+  }, 1000);
+  return {
+    close() { userClosed = false; handle.close(); },
+  };
 }
 
-function pickStream(meta, video, streams, { resumeTime } = {}) {
+function pickStream(meta, video, streams, { resumeTime, onDone } = {}) {
   const body = el('div', { class: 'modal-body' });
   const label = videoLabel(video);
   const modal = el('div', { class: 'modal', style: 'min-width: 900px' },
     el('div', { class: 'modal-title', text: `Streams — ${meta.name}${label ? ' · ' + label : ''}` }),
     body);
-  const handle = openModal(modal);
+  const handle = openModal(modal, { onClose: () => onDone && onDone() });
 
   streams.forEach((entry) => {
     const { addon, stream } = entry;

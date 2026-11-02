@@ -171,9 +171,13 @@ function onKeyDown(e) {
     return;
   }
   if (ENTER_KEYS.includes(key)) {
+    e.preventDefault();
+    // A held OK button auto-repeats on most remotes; one press = one action.
+    if (e.repeat) return;
     const cur = document.activeElement;
-    if (cur && cur.classList && cur.classList.contains('focusable')) {
-      e.preventDefault();
+    // Only activate what's in the top layer: never a button hidden behind a
+    // dialog that happened to keep focus.
+    if (cur && cur.classList && cur.classList.contains('focusable') && currentScope().contains(cur)) {
       activate(cur);
     }
     return;
@@ -214,6 +218,14 @@ export const Nav = {
   popScope() {
     scopes.pop();
   },
+  // Remove a specific scope wherever it is in the stack. Dialogs can close
+  // out of order (a slow request finishing under a newer dialog); popping
+  // the top would release the wrong one.
+  removeScope(el) {
+    const i = scopes.lastIndexOf(el);
+    if (i >= 0) scopes.splice(i, 1);
+  },
+  inTopScope: (el) => !!el && currentScope().contains(el),
   scopeDepth: () => scopes.length,
   pushKeyHandler(fn) { keyHandlers.push(fn); },
   popKeyHandler(fn) {

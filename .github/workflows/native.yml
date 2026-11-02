@@ -48,6 +48,9 @@ jobs:
       - run: npm run test:ui
         env:
           CHROMIUM_PATH: /usr/bin/google-chrome
+      - run: npm run test:native-flow
+        env:
+          CHROMIUM_PATH: /usr/bin/google-chrome
 
   flatpak:
     name: Flatpak (${{ matrix.arch }})
