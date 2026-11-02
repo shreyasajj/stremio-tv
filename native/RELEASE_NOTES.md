@@ -1,3 +1,11 @@
+### 0.2.3
+- Fix the video not showing while it plays (audio and the clock ran, but the stream picker stayed on screen). The UI's last frame was never cleared once the page went see-through; the web view now stays opaque until playback starts.
+- Fix the video being drawn upside down.
+- Diagnostics for TV boxes, no rebuild needed: `STREMIO_TV_MPV_LOG=v` for verbose mpv logs, `STREMIO_TV_MPV_OPTIONS="hwdec=no"` to override mpv options. The log now names the GPU and, for each video, the decoder in use.
+- The end-to-end test now checks real picture content and real audio output (PulseAudio in the test container).
+
+---
+
 ### 0.2.2
 - Fix video playing hidden behind the stream-selection dialogs.
 - Stop duplicate addon searches from being fired.

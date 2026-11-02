@@ -98,21 +98,22 @@ function recordPeak(source, ms) {
     if (!ok) console.log(`  (screenshot ${name} failed)`);
     return ok ? file : null;
   };
-  // Share of strongly coloured pixels in the centre of a window grab. The
-  // sample is colour bars; the UI is greys and dark blues, so a stale page
-  // frame left over the video doesn't count.
-  const videoFraction = (file) => {
+  // The sample is SMPTE-style colour bars: in a correct frame the red and the
+  // blue bar each cover about a sixth of the window. A stale UI frame over the
+  // video, a black frame or a green (chroma-less) frame all score ~0.
+  const barShares = (file) => {
     const png = PNG.sync.read(fs.readFileSync(file));
-    let lit = 0, total = 0;
-    for (let y = Math.floor(png.height * 0.3); y < png.height * 0.7; y += 4) {
-      for (let x = Math.floor(png.width * 0.3); x < png.width * 0.7; x += 4) {
+    let red = 0, blue = 0, total = 0;
+    for (let y = 0; y < png.height; y += 4) {
+      for (let x = 0; x < png.width; x += 4) {
         const i = (y * png.width + x) * 4;
         const [r, g, b] = [png.data[i], png.data[i + 1], png.data[i + 2]];
-        if (Math.max(r, g, b) - Math.min(r, g, b) > 120) lit++;
+        if (r > 180 && g < 90 && b < 90) red++;
+        if (b > 180 && r < 90 && g < 90) blue++;
         total++;
       }
     }
-    return lit / total;
+    return { red: red / total, blue: blue / total };
   };
 
   // ---- Bridge ----
@@ -156,8 +157,9 @@ function recordPeak(source, ms) {
   await page.waitForTimeout(1500);
   const playingShot = await shot('02-playing');
   // Overlay is hidden in lean-back mode: the centre must be mpv's video.
-  const lit = playingShot ? videoFraction(playingShot) : 0;
-  check('video is visible through the transparent UI', lit > 0.5, `${Math.round(lit * 100)}% video`);
+  const bars = playingShot ? barShares(playingShot) : { red: 0, blue: 0 };
+  check('video is visible through the transparent UI', bars.red > 0.1 && bars.blue > 0.1,
+    `red bar ${Math.round(bars.red * 100)}%, blue bar ${Math.round(bars.blue * 100)}%`);
 
   // ---- Audio reaches the sound server (dev container: PulseAudio null sink) ----
   const sink = process.env.STREMIO_TV_AUDIO_SINK;

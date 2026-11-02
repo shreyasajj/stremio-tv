@@ -16,5 +16,7 @@ if command -v pulseaudio >/dev/null; then
 fi
 # Containers have no user namespaces for Chromium's sandbox.
 export QTWEBENGINE_DISABLE_SANDBOX=1
-# llvmpipe: mpv's default float intermediate buffers come out (near-)black.
-export STREMIO_TV_MPV_OPTIONS="${STREMIO_TV_MPV_OPTIONS:-fbo-format=rgba8}"
+# Mesa's software GL corrupts mpv's float textures at random (scaler and
+# dither lookup tables, float FBOs): green, striped or black video, plain
+# `mpv --vo=gpu` included. Stick to mpv's simple render path here.
+export STREMIO_TV_MPV_OPTIONS="${STREMIO_TV_MPV_OPTIONS:-fbo-format=rgba8,dither-depth=no,scale=bilinear,cscale=bilinear,dscale=bilinear}"
