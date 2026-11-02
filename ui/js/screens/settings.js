@@ -4,7 +4,7 @@ import { el, toast, pickerModal, confirmModal } from '../ui.js';
 import { Storage } from '../storage.js';
 import { oskPrompt } from '../keyboard.js';
 import { logout, loggedInEmail } from '../stremio-api.js';
-import { nativeMpvAvailable, PASSTHROUGH_PRESETS } from '../mpv-video.js';
+import { nativeMpvAvailable, PASSTHROUGH_PRESETS, VIDEO_QUALITY_PRESETS } from '../mpv-video.js';
 
 export async function render({ router }) {
   const root = el('div', { class: 'screen' });
@@ -103,6 +103,22 @@ export async function render({ router }) {
           { selectedValue: preset.value });
         if (chosen !== null) {
           Storage.setSettings({ audioPassthrough: chosen });
+          toast('Applies from the next video you play');
+          router.refresh();
+        }
+      }
+    );
+
+    const quality = VIDEO_QUALITY_PRESETS.find((p) => p.value === settings.videoQuality) || VIDEO_QUALITY_PRESETS[0];
+    settingItem(
+      'Video quality',
+      `${quality.label}. If you hear a movie but the screen stays black, use Fast.`,
+      async () => {
+        const chosen = await pickerModal('Video quality',
+          VIDEO_QUALITY_PRESETS.map((p) => ({ label: p.label, value: p.value })),
+          { selectedValue: quality.value });
+        if (chosen !== null) {
+          Storage.setSettings({ videoQuality: chosen });
           toast('Applies from the next video you play');
           router.refresh();
         }

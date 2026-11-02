@@ -20,6 +20,23 @@ export function applyAudioOutput(mpv, settings) {
   mpv.set('audio-spdif', settings.audioPassthrough || '');
 }
 
+// Rendering quality. "fast" is the default because mpv's high-quality
+// defaults can be too slow for a TV box GPU, which shows up as black video
+// with audio playing.
+export const VIDEO_QUALITY_PRESETS = [
+  { label: 'Fast — smooth on TV boxes (recommended)', value: 'fast' },
+  { label: 'High quality — sharper scaling, needs a strong GPU', value: 'high-quality' },
+];
+
+export function applyVideoQuality(mpv, settings) {
+  if (settings.videoQuality === 'high-quality') {
+    mpv.command('apply-profile', 'high-quality');
+  } else {
+    mpv.command('apply-profile', 'fast');
+    mpv.set('deband', false); // high-quality turns it on; fast doesn't reset it
+  }
+}
+
 export class MpvVideo extends EventTarget {
   constructor() {
     super();
@@ -46,6 +63,32 @@ export class MpvVideo extends EventTarget {
       this.mpv.onEndFile((reason, error) => this._onEndFile(reason, error)),
     ];
     document.documentElement.classList.add('native-video-playing');
+    // Switch the web view's own background to transparent only now: the
+    // switch makes WebEngine repaint the whole page, so it doesn't keep
+    // showing the old (opaque) screens over the video.
+    window.shell.setPageTransparent?.(true);
+    // The OpenGL renderer may already have failed at startup.
+    Promise.resolve(this.mpv.get('stv-render-error')).then((msg) => {
+      if (msg) this._renderError(msg);
+    }).catch(() => {});
+  }
+
+  _renderError(message) {
+    if (this.videoOutputError) return;
+    this.videoOutputError = message;
+    this._emit('videooutputerror');
+  }
+
+  // Resolves to a reason string if a video track exists but nothing reaches
+  // the screen (decoder/hwdec failure), or null if video is being shown.
+  async checkVideoOutput() {
+    if (this.videoOutputError) return this.videoOutputError;
+    const vtrack = this.tracks.find((t) => t.type === 'video' && t.selected && !t.albumart && !t.image);
+    if (!vtrack) return null; // audio-only file: nothing to show anyway
+    const out = await this.mpv.get('video-out-params');
+    if (out && out.w) return null;
+    const codec = [vtrack.codec, vtrack['demux-w'] && `${vtrack['demux-w']}x${vtrack['demux-h']}`].filter(Boolean).join(' ');
+    return `the video (${codec || 'unknown codec'}) can't be decoded or displayed on this box`;
   }
 
   // ---- HTMLMediaElement subset used by player.js ----
@@ -107,6 +150,7 @@ export class MpvVideo extends EventTarget {
     this.mpv.command('stop');
     this.mpv.set('pause', false);
     document.documentElement.classList.remove('native-video-playing');
+    window.shell.setPageTransparent?.(false);
   }
 
   // ---- mpv extras ----
@@ -126,6 +170,7 @@ export class MpvVideo extends EventTarget {
   _emit(type) { this.dispatchEvent(new Event(type)); }
 
   _onProperty(name, value) {
+    if (name === 'stv-render-error') { if (value) this._renderError(value); return; }
     if (!this._src) return;
     switch (name) {
       case 'pause':

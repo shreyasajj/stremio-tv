@@ -56,6 +56,18 @@ QString ShellBridge::injectScript() const {
 }
 
 bool ShellBridge::windowed() const { return envFlag("STREMIO_TV_WINDOWED"); }
+
+void ShellBridge::setVideoOnly(bool on) {
+    if (videoOnly_ == on) return;
+    videoOnly_ = on;
+    emit videoOnlyChanged();
+}
+
+void ShellBridge::setPageTransparent(bool on) {
+    if (pageTransparent_ == on) return;
+    pageTransparent_ = on;
+    emit pageTransparentChanged();
+}
 bool ShellBridge::testMode() const { return envFlag("STREMIO_TV_TEST"); }
 
 void ShellBridge::proxyFetch(const QString &url, int requestId) {

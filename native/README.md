@@ -64,6 +64,29 @@ docker run --rm -v "$PWD":/src -w /src -e SHOTS=1 stremio-tv-native-dev sh nativ
 NATIVE_BIN=native/build/stremio-tv-native npm run test:native
 ```
 
+## How the video gets on screen
+
+mpv renders into the `MpvVideo` item underneath the web view. Three things
+keep it visible:
+
+- **The web view's background is opaque until a video opens**, then switches
+  to transparent. Leaving it transparent all the time made WebEngine keep the
+  old screens' pixels over the video: sound played but the TV showed the
+  frozen UI.
+- **While you just watch, the web layer isn't drawn at all**: no controls,
+  menus or messages are up, so `ShellBridge.videoOnly` sets the view's
+  opacity to 0. Key focus stays on the page, and the GPU does less work.
+- **mpv uses its `fast` rendering profile by default.** On a TV box GPU the
+  high-quality defaults can take longer than a frame lasts, and mpv then
+  shows black frames while the audio keeps playing. *Settings → Video
+  quality* switches to `high-quality` for strong GPUs.
+
+If you get sound but no picture, the player says why on screen: the
+renderer failed to start, or the video track can't be decoded or displayed on
+this box. For more detail, start the app from a terminal with
+`STREMIO_TV_MPV_LOG=v` (Flatpak: `flatpak run --env=STREMIO_TV_MPV_LOG=v
+io.github.shreyasajj.StremioTV`).
+
 ## Audio passthrough (Atmos/DTS) checklist
 
 1. *Settings → Audio output device*: pick the HDMI ALSA device (`alsa/hdmi:CARD=…`).
@@ -82,4 +105,5 @@ NATIVE_BIN=native/build/stremio-tv-native npm run test:native
 | `STREMIO_TV_WINDOWED=1` | don't force fullscreen |
 | `STREMIO_TV_UI=/path/index.html` | load a different UI build |
 | `STREMIO_TV_TEST=1` | enable the screenshot hook used by tests |
+| `STREMIO_TV_MPV_LOG=v` | verbose mpv log on the terminal, for playback trouble (`debug` for more) |
 | `QTWEBENGINE_REMOTE_DEBUGGING=127.0.0.1:9222` | inspect the UI from Chrome's `chrome://inspect` |

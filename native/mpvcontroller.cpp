@@ -76,6 +76,11 @@ MpvController::MpvController(QObject *parent) : QObject(parent), core_(std::make
     }
     mpv_set_option_string(h, "vo", "libmpv");
     mpv_set_option_string(h, "hwdec", "auto-safe");
+    // TV boxes: mpv's default (high-quality) scalers and 16-bit intermediate
+    // buffers can be more than a small GPU renders per frame; mpv then shows
+    // black frames while the audio keeps playing. The UI can switch to the
+    // `high-quality` profile (Settings → Video quality) on strong GPUs.
+    mpv_set_option_string(h, "profile", "fast");
     mpv_set_option_string(h, "idle", "yes");
     mpv_set_option_string(h, "keep-open", "no");
     mpv_set_option_string(h, "ytdl", "no");
@@ -90,13 +95,16 @@ MpvController::MpvController(QObject *parent) : QObject(parent), core_(std::make
     mpv_set_option_string(h, "sub-auto", "no");
     mpv_set_option_string(h, "audio-display", "no");
     mpv_set_option_string(h, "terminal", "no");
-    mpv_set_option_string(h, "msg-level", "all=warn");
+    // STREMIO_TV_MPV_LOG=v (or debug) for troubleshooting playback on a box.
+    QByteArray logLevel = qgetenv("STREMIO_TV_MPV_LOG");
+    if (logLevel.isEmpty()) logLevel = "warn";
+    mpv_set_option_string(h, "msg-level", ("all=" + logLevel).constData());
     if (mpv_initialize(h) < 0) {
         qWarning() << "mpv_initialize failed";
         mpv_terminate_destroy(h);
         return;
     }
-    mpv_request_log_messages(h, "warn");
+    mpv_request_log_messages(h, logLevel.constData());
     for (const char *name : kObserved)
         mpv_observe_property(h, 0, name, MPV_FORMAT_NODE);
 
@@ -160,7 +168,14 @@ void MpvController::setOption(const QString &name, const QVariant &value) {
     }
 }
 
+void MpvController::reportRenderError(const QString &message) {
+    qWarning().noquote() << "Video output error:" << message;
+    renderError_ = message;
+    emit propertyChanged(QStringLiteral("stv-render-error"), message);
+}
+
 QVariant MpvController::getProperty(const QString &name) const {
+    if (name == QLatin1String("stv-render-error")) return renderError_;
     if (!available()) return {};
     mpv_node node;
     if (mpv_get_property(core_->handle, name.toUtf8().constData(), MPV_FORMAT_NODE, &node) < 0)

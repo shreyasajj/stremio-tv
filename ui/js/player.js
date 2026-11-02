@@ -12,7 +12,7 @@ import { Storage } from './storage.js';
 import { el, toast, formatTime, pickerModal, hasOpenModal, closeAllModals } from './ui.js';
 import { getSubtitles } from './addons.js';
 import {
-  MpvVideo, nativeMpvAvailable, applyAudioOutput, trackLabel, audioTrackDetails, audioOutputSummary,
+  MpvVideo, nativeMpvAvailable, applyAudioOutput, applyVideoQuality, trackLabel, audioTrackDetails, audioOutputSummary,
 } from './mpv-video.js';
 
 const SEEK_COMMIT_MS = 650;
@@ -39,6 +39,9 @@ export function openPlayer(ctx) {
   // passthrough). Electron/browser: the HTML5 <video> element.
   const video = nativeMpvAvailable() ? new MpvVideo() : el('video', { autoplay: '', preload: 'auto' });
   if (!video.isNative) video.crossOrigin = 'anonymous';
+  if (window.shell?.isNative && !video.isNative) {
+    toast('The mpv video engine did not start; using the basic player, which cannot play most HEVC/Dolby files.', 'error', 10000);
+  }
 
   // ---- overlay DOM ----
   const title = ctx.meta?.name || 'Playing';
@@ -110,6 +113,7 @@ export function openPlayer(ctx) {
   const isHls = /\.m3u8(\?|$)/i.test(ctx.url);
   if (video.isNative) {
     applyAudioOutput(video.mpv, Storage.getSettings());
+    applyVideoQuality(video.mpv, Storage.getSettings());
     video.src = ctx.url;
   } else if (isHls && window.Hls && window.Hls.isSupported()) {
     s.hls = new window.Hls();
@@ -147,6 +151,26 @@ export function openPlayer(ctx) {
   });
   video.addEventListener('error', () => fail('This stream could not be played'));
 
+  // mpv: sound but no picture must never be silent. Report renderer
+  // failures right away, and check a few seconds into playback that frames
+  // actually reach the screen.
+  if (video.isNative) {
+    const reportNoPicture = (why, hint = 'Try a 1080p or H.264 stream.') =>
+      toast(`No picture: ${why}. ${hint}`, 'error', 12000);
+    video.addEventListener('videooutputerror', () => reportNoPicture(video.videoOutputError,
+      'This is a graphics driver problem, not the stream.'));
+    let checked = false;
+    video.addEventListener('playing', () => {
+      if (checked) return;
+      checked = true;
+      setTimeout(async () => {
+        if (session !== s || video.videoOutputError) return;
+        const why = await video.checkVideoOutput().catch(() => null);
+        if (why && session === s) reportNoPicture(why);
+      }, 6000);
+    });
+  }
+
   // Keep the display awake only while playing (main process powerSaveBlocker).
   const notifyPlayback = () => window.shell?.setPlaybackActive?.(!video.paused && !video.ended);
   video.addEventListener('play', notifyPlayback);
@@ -172,6 +196,25 @@ export function openPlayer(ctx) {
   function fail(msg) {
     toast(msg, 'error');
     closePlayer();
+  }
+
+  // ---- native shell: draw the web layer only when it has something to show ----
+  // While nothing sits over the video (no controls, seek bar, spinner,
+  // menu or message) the shell stops drawing the page, so the picture never
+  // depends on the GPU compositing a transparent web page.
+  if (video.isNative && window.shell?.setVideoOnly) {
+    const modalRoot = document.getElementById('modal-root');
+    const toastRoot = document.getElementById('toast-root');
+    s.updateLayer = () => {
+      if (session !== s) return;
+      const overlayNeeded = s.mode !== 'hidden' || root.classList.contains('loading')
+        || modalRoot.children.length > 0 || toastRoot.children.length > 0;
+      window.shell.setVideoOnly(!overlayNeeded);
+    };
+    s.layerObserver = new MutationObserver(() => s.updateLayer());
+    s.layerObserver.observe(root, { attributes: true, attributeFilter: ['class'] });
+    s.layerObserver.observe(modalRoot, { childList: true });
+    s.layerObserver.observe(toastRoot, { childList: true });
   }
 
   // ---- overlay state machine ----
@@ -217,6 +260,9 @@ export function openPlayer(ctx) {
     else video.pause();
     showFlash(video.paused ? '⏸' : '▶');
     refreshPlayButton();
+    // Paused: show the controls (they stay up until playback resumes), so a
+    // paused picture never looks like a frozen screen.
+    if (video.paused && s.mode !== 'controls' && !hasOpenModal()) setMode('controls');
     bumpAutohide();
   }
   s.togglePlay = togglePlay;
@@ -507,6 +553,8 @@ export function closePlayer() {
   window.removeEventListener('blur', s.pauseForBackground);
   document.removeEventListener('visibilitychange', s.onVisibility);
   window.shell?.setPlaybackActive?.(false);
+  if (s.layerObserver) s.layerObserver.disconnect();
+  window.shell?.setVideoOnly?.(false); // the UI must be drawn again
   if (s.hls) { try { s.hls.destroy(); } catch { /* ignore */ } }
   if (s.video.isNative) {
     s.video.destroy();

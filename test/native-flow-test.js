@@ -100,21 +100,43 @@ function check(name, cond, info = '') {
   check('no dialog is drawn over the video', (await modalCount()) === 0, (await modalText()).slice(0, 60));
   check('mpv loaded the file exactly once', (await loadfiles()) === 1, `${await loadfiles()} loadfile calls`);
   check('page is see-through for mpv', await page.evaluate(() => document.documentElement.classList.contains('native-video-playing')));
+  check('web view background switched to transparent', await page.evaluate(() => window.__fakeMpv.state.pageTransparent === true));
+  check('fast rendering profile applied', await page.evaluate(() =>
+    window.__fakeMpv.log.some((l) => l[1] === 'apply-profile' && l[2] === 'fast')));
   const t = await page.evaluate(() => window.__fakeMpv.state.time);
   check('playback is progressing', t > 0.5, `t=${t}`);
   await shot('n3-playing');
 
+  // ---- watching: the shell stops drawing the web layer over the video ----
+  const videoOnly = () => page.evaluate(() => window.__fakeMpv.state.videoOnly);
+  check('web layer hidden while watching (video shown on its own)', await videoOnly());
+
   // ---- remote keys reach the player, not a hidden dialog ----
   await press('Enter', 200);
   check('OK pauses mpv', await page.evaluate(() => window.__fakeMpv.state.pause === true));
-  await press('Enter', 200);
+  check('pausing shows the controls', await page.evaluate(() => document.getElementById('player-root').classList.contains('show-controls')));
+  check('web layer drawn again for the controls', !(await videoOnly()));
+  await shot('n4-paused');
+  await press('Enter', 200); // focused Play button
   check('OK resumes mpv', await page.evaluate(() => window.__fakeMpv.state.pause === false));
+  await press('Escape', 300); // hide controls
+  check('Back hides the controls', !(await page.evaluate(() => document.getElementById('player-root').classList.contains('show-controls'))));
+  check('web layer hidden again once the controls go away', await videoOnly());
+
+  // ---- a message over the video brings the web layer back ----
+  await page.evaluate(async () => (await import('./js/ui.js')).toast('test message', 'info', 600));
+  await page.waitForTimeout(100);
+  check('web layer drawn for an on-screen message', !(await videoOnly()));
+  await page.waitForTimeout(900);
+  check('and hidden again after it', await videoOnly());
 
   // ---- Back during the search cancels it cleanly ----
   await press('Escape', 400);
   check('one Back press exits the player', !(await playerOpen()));
+  check('web layer drawn again after exit', !(await videoOnly()));
   check('mpv stopped', await page.evaluate(() => window.__fakeMpv.state.file === ''));
   check('page is opaque again', await page.evaluate(() => !document.documentElement.classList.contains('native-video-playing')));
+  check('web view background opaque again', await page.evaluate(() => window.__fakeMpv.state.pageTransparent === false));
   await page.waitForSelector('.detail-title', { timeout: 5000 });
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('stv.library') || '{}')['movie:mock:movie1']);
   check('watch progress saved from mpv', !!saved && saved.time > 1, saved ? `t=${saved.time}` : 'none');
@@ -142,6 +164,42 @@ function check(name, cond, info = '') {
   await press('Enter', 200);
   await page.waitForTimeout(STREAM_DELAY_MS + 500);
   check('Cancel closes the search for good', (await modalCount()) === 0);
+
+  // ---- sound but no picture must be explained on screen ----
+  await page.evaluate(() => { window.__fakeMpv.state.noVideo = true; });
+  await page.evaluate(() => {
+    const b = [...document.querySelectorAll('.screen:not(.hidden) .btn')].find((x) => x.textContent.includes('Play'));
+    b.focus();
+  });
+  await press('Enter', 200);
+  await page.waitForFunction(() => document.querySelectorAll('#modal-root .list-item').length > 0, null, { timeout: 10000 });
+  await press('Enter', 200);
+  const noPicture = await page.waitForFunction(
+    () => document.getElementById('toast-root').textContent.includes('No picture'), null, { timeout: 12000 },
+  ).then(() => true).catch(() => false);
+  const toastText = await page.evaluate(() => document.getElementById('toast-root').textContent);
+  check('"No picture" message when frames never reach the screen', noPicture, toastText.slice(0, 110));
+  check('message names the codec', /hevc 3840x2160/.test(toastText));
+  await shot('n5-no-picture');
+  await press('Escape', 400);
+  check('Back exits the player', !(await playerOpen()));
+
+  // ---- renderer that failed at startup is reported on the first play ----
+  await page.evaluate(() => {
+    window.__fakeMpv.state.noVideo = false;
+    window.__fakeMpv.state.renderError = 'libmpv could not start OpenGL video output (test)';
+    document.getElementById('toast-root').innerHTML = '';
+  });
+  await page.waitForSelector('.detail-title', { timeout: 5000 });
+  await page.evaluate(() => {
+    const b = [...document.querySelectorAll('.screen:not(.hidden) .btn')].find((x) => x.textContent.includes('Play'));
+    b.focus();
+  });
+  await press('Enter', 200);
+  await page.waitForFunction(() => document.querySelectorAll('#modal-root .list-item').length > 0, null, { timeout: 10000 });
+  await press('Enter', 600);
+  const rText = await page.evaluate(() => document.getElementById('toast-root').textContent);
+  check('renderer failure is reported on screen', rText.includes('OpenGL video output'), rText.slice(0, 110));
 
   await browser.close();
   ui.close();

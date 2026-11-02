@@ -53,7 +53,12 @@ Window {
         anchors.fill: parent
         focus: true
         profile: profile
-        backgroundColor: "transparent"
+        backgroundColor: shell.pageTransparent ? "transparent" : "#0c0d16"
+        // Watching with no controls/menus/messages up: don't draw the web
+        // layer at all, so the video never depends on WebEngine compositing
+        // a transparent page (some GPUs/drivers keep showing the old, opaque
+        // UI instead). Opacity, not `visible`, so the page keeps key focus.
+        opacity: shell.videoOnly ? 0 : 1
         settings.localContentCanAccessRemoteUrls: true
         settings.playbackRequiresUserGesture: false
         settings.javascriptCanAccessClipboard: true
@@ -77,7 +82,12 @@ Window {
         onRenderProcessTerminated: (status, code) => {
             console.warn("Web UI process terminated (" + status + ", " + code + "), reloading")
             mpv.command(["stop"])
+            shell.setVideoOnly(false)
             reloadTimer.start()
+        }
+        // A (re)loading page must always be visible.
+        onLoadingChanged: loadingInfo => {
+            if (loadingInfo.status === WebEngineView.LoadStartedStatus) shell.setVideoOnly(false)
         }
         Timer {
             id: reloadTimer

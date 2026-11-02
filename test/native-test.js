@@ -93,6 +93,22 @@ async function waitFor(fn, { timeout = 15000, interval = 200 } = {}) {
     }
     return lit / total;
   };
+  // Share of strongly coloured pixels in the centre: the test video is
+  // saturated colour bars, the UI is navy/grey/white. Unlike litFraction, a
+  // stale UI frame left over the video can't pass for "video visible".
+  const videoFraction = (file) => {
+    const png = PNG.sync.read(fs.readFileSync(file));
+    let colored = 0, total = 0;
+    for (let y = Math.floor(png.height * 0.3); y < png.height * 0.7; y += 4) {
+      for (let x = Math.floor(png.width * 0.3); x < png.width * 0.7; x += 4) {
+        const i = (y * png.width + x) * 4;
+        const r = png.data[i], g = png.data[i + 1], b = png.data[i + 2];
+        if (Math.max(r, g, b) - Math.min(r, g, b) > 80) colored++;
+        total++;
+      }
+    }
+    return colored / total;
+  };
 
   // ---- Bridge ----
   await page.waitForFunction(() => window.shell && window.shell.isNative, undefined, { timeout: 15000 });
@@ -135,8 +151,23 @@ async function waitFor(fn, { timeout = 15000, interval = 200 } = {}) {
   await page.waitForTimeout(1500);
   const playingShot = await shot('02-playing');
   // Overlay is hidden in lean-back mode: the centre must be mpv's video.
-  const lit = playingShot ? litFraction(playingShot) : 0;
-  check('video is visible through the transparent UI', lit > 0.2, `${Math.round(lit * 100)}% lit`);
+  const lit = playingShot ? videoFraction(playingShot) : 0;
+  check('video is on screen while watching', lit > 0.5, `${Math.round(lit * 100)}% video pixels`);
+
+  // Some GPUs/drivers never composite a transparent WebEngineView: the old,
+  // opaque UI stays on screen while the movie plays underneath. Simulate it
+  // with an opaque page; while watching, the shell must not draw the page.
+  await page.evaluate(() => {
+    const st = document.createElement('style');
+    st.id = 'force-opaque';
+    st.textContent = 'html, body, #player-root { background: #0c0d16 !important; }';
+    document.head.append(st);
+  });
+  await page.waitForTimeout(800);
+  const opaqueShot = await shot('02b-opaque-page');
+  const litOpaque = opaqueShot ? videoFraction(opaqueShot) : 0;
+  check('video visible even if the page cannot go transparent', litOpaque > 0.5, `${Math.round(litOpaque * 100)}% video pixels`);
+  await page.evaluate(() => document.getElementById('force-opaque').remove());
 
   // ---- OK pauses / resumes ----
   await key('Enter');
@@ -148,7 +179,11 @@ async function waitFor(fn, { timeout = 15000, interval = 200 } = {}) {
   await page.evaluate(() => window.dispatchEvent(new Event('blur')));
   check('losing focus pauses mpv', await waitFor(() => mpvGet('pause'), { timeout: 3000 }));
   check('paused overlay shows', await playerClass('show-controls'));
-  await shot('03-paused-overlay');
+  await page.waitForTimeout(500);
+  const pausedShot = await shot('03-paused-overlay');
+  const pausedVideo = pausedShot ? videoFraction(pausedShot) : 0;
+  check('paused picture visible behind the controls (page really transparent)', pausedVideo > 0.3,
+    `${Math.round(pausedVideo * 100)}% video pixels`);
   await key('Enter'); // focused Play button
   check('OK on Play resumes', await waitFor(async () => (await mpvGet('pause')) === false, { timeout: 3000 }));
   await key('Escape');

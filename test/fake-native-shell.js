@@ -6,7 +6,10 @@ module.exports = function installFakeNativeShell() {
   const subs = { prop: new Set(), loaded: new Set(), end: new Set() };
   const on = (set) => (cb) => { set.add(cb); return () => set.delete(cb); };
   const emit = (set, ...args) => set.forEach((cb) => { try { cb(...args); } catch (e) { console.error(e); } });
-  const state = { pause: false, time: 0, duration: 0, file: '', timer: null, loadTimer: null };
+  const state = {
+    pause: false, time: 0, duration: 0, file: '', timer: null, loadTimer: null,
+    videoOnly: false, videoOnlyLog: [], noVideo: false, renderError: '',
+  };
   const log = (window.__mpvLog = []);
 
   function stopFile(reason) {
@@ -30,7 +33,7 @@ module.exports = function installFakeNativeShell() {
           state.duration = 1800;
           emit(subs.prop, 'duration', state.duration);
           emit(subs.prop, 'track-list', [
-            { id: 1, type: 'video', selected: true, codec: 'hevc' },
+            { id: 1, type: 'video', selected: true, codec: 'hevc', 'demux-w': 3840, 'demux-h': 2160 },
             { id: 1, type: 'audio', selected: true, codec: 'truehd', lang: 'eng', 'demux-channel-count': 8 },
           ]);
           emit(subs.loaded);
@@ -51,7 +54,13 @@ module.exports = function installFakeNativeShell() {
       log.push(['set', name, value]);
       if (name === 'pause') { state.pause = !!value; emit(subs.prop, 'pause', state.pause); }
     },
-    get: (name) => Promise.resolve(name === 'time-pos' ? state.time : null),
+    get: (name) => {
+      if (name === 'time-pos') return Promise.resolve(state.time);
+      if (name === 'stv-render-error') return Promise.resolve(state.renderError || '');
+      // A box that can't decode/display the video: audio plays, no frames.
+      if (name === 'video-out-params') return Promise.resolve(state.file && state.duration && !state.noVideo ? { w: 1920, h: 1080 } : null);
+      return Promise.resolve(null);
+    },
     onProperty: on(subs.prop),
     onFileLoaded: on(subs.loaded),
     onEndFile: on(subs.end),
@@ -63,6 +72,8 @@ module.exports = function installFakeNativeShell() {
     testMode: true,
     quit: () => {},
     setPlaybackActive: () => {},
+    setVideoOnly: (on) => { state.videoOnly = !!on; state.videoOnlyLog.push(!!on); },
+    setPageTransparent: (on) => { state.pageTransparent = !!on; },
     onWindowBlur: () => () => {},
     onWindowFocus: () => () => {},
     mpv,

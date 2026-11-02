@@ -27,6 +27,7 @@ export const DEFAULT_SETTINGS = {
   // Native (libmpv) shell only:
   audioDevice: 'auto',     // mpv audio-device, e.g. alsa/hdmi:CARD=PCH,DEV=0
   audioPassthrough: '',    // mpv audio-spdif codec list; '' = decode to PCM
+  videoQuality: 'fast',    // mpv rendering profile: fast | high-quality
 };
 
 export const Storage = {

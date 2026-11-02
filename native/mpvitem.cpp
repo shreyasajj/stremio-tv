@@ -49,10 +49,18 @@ public:
                 { MPV_RENDER_PARAM_OPENGL_INIT_PARAMS, &gl },
                 { MPV_RENDER_PARAM_INVALID, nullptr },
             };
-            if (mpv_render_context_create(&context_, core_->handle, params) < 0) {
-                qWarning() << "Failed to initialize the libmpv OpenGL renderer";
+            const int err = mpv_render_context_create(&context_, core_->handle, params);
+            if (err < 0) {
+                qWarning() << "Failed to initialize the libmpv OpenGL renderer:" << mpv_error_string(err);
                 context_ = nullptr;
                 failed_ = true;
+                // Tell the UI: otherwise audio plays over a blank screen.
+                std::lock_guard<std::mutex> lock(core_->mutex);
+                if (core_->controller) {
+                    QMetaObject::invokeMethod(core_->controller, "reportRenderError", Qt::QueuedConnection,
+                        Q_ARG(QString, QStringLiteral("libmpv could not start OpenGL video output (%1)")
+                                           .arg(QString::fromUtf8(mpv_error_string(err)))));
+                }
                 return;
             }
             mpv_render_context_set_update_callback(context_, onUpdate, core_.get());

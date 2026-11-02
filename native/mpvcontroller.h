@@ -45,6 +45,10 @@ public:
     // Set an mpv property/option at runtime (bool, number or string).
     Q_INVOKABLE void setOption(const QString &name, const QVariant &value);
     Q_INVOKABLE QVariant getProperty(const QString &name) const;
+    // Called (queued) by the video item when libmpv's OpenGL renderer can't
+    // start: audio would play over a blank screen. Reaches the UI as the
+    // pseudo-property "stv-render-error" (also readable via getProperty).
+    Q_INVOKABLE void reportRenderError(const QString &message);
 
 signals:
     void propertyChanged(const QString &name, const QVariant &value);
@@ -60,6 +64,7 @@ private:
     std::shared_ptr<MpvCore> core_;
     QHash<QString, QVariant> throttled_;
     QTimer throttleTimer_;
+    QString renderError_;
     void handlePropertyChange(const QString &name, const QVariant &value);
 };
 
