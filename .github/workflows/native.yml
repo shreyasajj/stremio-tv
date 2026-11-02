@@ -36,6 +36,19 @@ jobs:
           path: test/shots/native-*.png
           if-no-files-found: ignore
 
+  ui:
+    name: UI test (browser / Electron path)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci --ignore-scripts
+      - run: npm run test:ui
+        env:
+          CHROMIUM_PATH: /usr/bin/google-chrome
+
   flatpak:
     name: Flatpak (${{ matrix.arch }})
     strategy:
@@ -63,7 +76,7 @@ jobs:
   release:
     name: Publish release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [e2e, flatpak]
+    needs: [e2e, ui, flatpak]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
