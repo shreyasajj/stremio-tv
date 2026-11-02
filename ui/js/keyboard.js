@@ -4,6 +4,7 @@
 
 import { el, openModal, toast } from './ui.js';
 import { Nav } from './nav.js';
+import { icon } from './icons.js';
 
 const ROWS_LOWER = [
   ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
@@ -21,10 +22,10 @@ const ROWS_SYMBOLS = [
 
 // createKeyboard: the keyboard itself (text display + key rows), for embedding
 // in a screen or a dialog.
-// opts: { value, password, placeholder, onChange(text), onDone(text) }
+// opts: { value, password, placeholder, leadingIcon, onChange(text), onDone(text) }
 // Returns { element, text(), setText(t), focus(), handleKey(e) }; handleKey
 // types physical keys into it and returns true when it consumed the event.
-export function createKeyboard({ value = '', password = false, placeholder, onChange, onDone } = {}) {
+export function createKeyboard({ value = '', password = false, placeholder, leadingIcon, onChange, onDone } = {}) {
   let text = value;
   let layer = 'lower'; // lower | upper | symbols
 
@@ -34,6 +35,7 @@ export function createKeyboard({ value = '', password = false, placeholder, onCh
 
   function renderDisplay() {
     display.innerHTML = '';
+    if (leadingIcon) display.append(icon(leadingIcon));
     if (!text) {
       display.append(el('span', { class: 'osk-placeholder', text: placeholder || (password ? 'Password' : 'Type with the arrow keys…') }));
     } else {
@@ -48,8 +50,10 @@ export function createKeyboard({ value = '', password = false, placeholder, onCh
     if (!silent && onChange) onChange(text);
   }
 
-  function key(label, action, cls = '') {
-    const b = el('button', { class: `focusable osk-key ${cls}`, text: label });
+  function key(label, action, cls = '', glyph = null) {
+    const b = glyph
+      ? el('button', { class: `focusable osk-key ${cls}`, 'aria-label': label }, icon(glyph))
+      : el('button', { class: `focusable osk-key ${cls}`, text: label });
     b.addEventListener('click', action);
     return b;
   }
@@ -81,7 +85,7 @@ export function createKeyboard({ value = '', password = false, placeholder, onCh
       key('#+=', () => { layer = layer === 'symbols' ? 'lower' : 'symbols'; renderRows(); }, layer === 'symbols' ? 'on' : ''),
       key('Space', () => setText(text + ' '), 'wide'),
       key('Paste', paste),
-      key('⌫', () => setText(text.slice(0, -1))),
+      key('Backspace', () => setText(text.slice(0, -1)), '', 'backspace'),
       key('Clear', () => setText('')),
       key('Done', () => onDone && onDone(text), 'wide')
     );

@@ -5,18 +5,21 @@ import { Storage } from '../storage.js';
 import { oskPrompt } from '../keyboard.js';
 import { logout, loggedInEmail } from '../stremio-api.js';
 import { nativeMpvAvailable, PASSTHROUGH_PRESETS } from '../mpv-video.js';
+import { icon } from '../icons.js';
 
 export async function render({ router }) {
   const root = el('div', { class: 'screen' });
   root.append(el('h1', { class: 'screen-title', text: 'Settings' }));
 
-  const list = el('div');
+  const list = el('div', { class: 'settings-list' });
   root.append(list);
 
   function settingItem(title, subText, onClick, opts = {}) {
-    const item = el('button', { class: 'focusable list-item', ...(opts.attrs || {}) },
-      el('div', { class: 'li-title', text: title }),
-      el('div', { class: 'li-sub', text: subText }));
+    const item = el('button', { class: 'focusable list-item setting-item', ...(opts.attrs || {}) },
+      el('div', { class: 'setting-text' },
+        el('div', { class: 'li-title', text: title }),
+        el('div', { class: 'li-sub', text: subText })),
+      icon('chevronRight'));
     item.addEventListener('click', onClick);
     list.append(item);
     return item;

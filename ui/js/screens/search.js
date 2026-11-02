@@ -10,6 +10,7 @@ import { createKeyboard } from '../keyboard.js';
 import { Storage } from '../storage.js';
 import { Nav } from '../nav.js';
 import { isPlayerOpen } from '../player.js';
+import { icon } from '../icons.js';
 
 const LIVE_DEBOUNCE_MS = 450;
 const TOP_MATCHES = 6;
@@ -25,6 +26,7 @@ export async function render({ router, params = {} }) {
   const kb = createKeyboard({
     value: params.initialQuery || '',
     placeholder: 'Search movies & series…',
+    leadingIcon: 'search',
     onChange: (q) => liveSearch(q),
     onDone: (q) => {
       clearTimeout(liveTimer);
@@ -59,7 +61,7 @@ export async function render({ router, params = {} }) {
     }
     const list = el('div', { class: 'search-list' });
     history.slice(0, 8).forEach((q) => {
-      const item = el('button', { class: 'focusable list-item search-recent' }, el('div', { class: 'li-title', text: q }));
+      const item = el('button', { class: 'focusable list-item search-recent' }, icon('search'), el('div', { class: 'li-title', text: q }));
       item.addEventListener('click', () => {
         kb.setText(q, { silent: true });
         Storage.addSearchHistory(q); // move to the top
@@ -71,7 +73,7 @@ export async function render({ router, params = {} }) {
       });
       list.append(item);
     });
-    const clear = el('button', { class: 'focusable btn search-clear', text: 'Clear history' });
+    const clear = el('button', { class: 'focusable btn search-clear' }, icon('trash'), 'Clear history');
     clear.addEventListener('click', () => {
       Storage.clearSearchHistory();
       showHistory();

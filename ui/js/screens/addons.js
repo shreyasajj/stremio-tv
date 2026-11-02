@@ -2,6 +2,7 @@
 // import the addon collection from a Stremio account, restore defaults.
 
 import { el, toast, confirmModal } from '../ui.js';
+import { icon } from '../icons.js';
 import { oskPrompt } from '../keyboard.js';
 import {
   installedAddons, installAddon, removeAddon, fetchAddon, installDefaultAddons,
@@ -13,11 +14,11 @@ export async function render({ router }) {
   root.append(el('h1', { class: 'screen-title', text: 'Add-ons' }));
 
   const btnRow = el('div', { class: 'btn-row' });
-  const list = el('div');
+  const list = el('div', { class: 'addon-list' });
   root.append(btnRow, list);
 
   // ---- Add by URL (this is how you add AIOStreams) ----
-  const addBtn = el('button', { class: 'focusable btn primary', 'data-nav-default': '', text: '+  Add addon by URL' });
+  const addBtn = el('button', { class: 'focusable btn primary', 'data-nav-default': '' }, icon('plus'), 'Add addon by URL');
   addBtn.addEventListener('click', async () => {
     const url = await oskPrompt({ title: 'Addon manifest URL (https://… or stremio://…)' });
     if (!url) return;
@@ -32,7 +33,7 @@ export async function render({ router }) {
   });
 
   // ---- Import from Stremio account ----
-  const importBtn = el('button', { class: 'focusable btn', text: '⇩  Import from Stremio account' });
+  const importBtn = el('button', { class: 'focusable btn' }, icon('download'), 'Import from Stremio account');
   importBtn.addEventListener('click', async () => {
     try {
       if (!loggedInEmail()) {
@@ -57,7 +58,7 @@ export async function render({ router }) {
   });
 
   // ---- Restore defaults ----
-  const defaultsBtn = el('button', { class: 'focusable btn', text: '↺  Restore default addons' });
+  const defaultsBtn = el('button', { class: 'focusable btn' }, icon('restore'), 'Restore default addons');
   defaultsBtn.addEventListener('click', async () => {
     await installDefaultAddons();
     toast('Default addons restored (Cinemeta, OpenSubtitles)');
@@ -77,7 +78,7 @@ export async function render({ router }) {
       m.catalogs?.length ? `${m.catalogs.length} catalog${m.catalogs.length === 1 ? '' : 's'}` : null,
       (m.resources || []).map((r) => (typeof r === 'string' ? r : r.name)).join(', '),
     ].filter(Boolean).join(' · ');
-    const removeBtn = el('button', { class: 'focusable btn danger', text: 'Remove' });
+    const removeBtn = el('button', { class: 'focusable btn danger' }, icon('trash'), 'Remove');
     removeBtn.addEventListener('click', async () => {
       if (await confirmModal(`Remove “${m.name}”?`, { okLabel: 'Remove', danger: true })) {
         removeAddon(m.id);
@@ -87,7 +88,7 @@ export async function render({ router }) {
     });
     const item = el('div', { class: 'list-item' },
       el('div', { class: 'addon-line' },
-        m.logo ? el('img', { class: 'addon-logo', src: m.logo }) : el('div', { class: 'addon-logo' }),
+        m.logo ? el('img', { class: 'addon-logo', src: m.logo }) : el('div', { class: 'addon-logo' }, icon('addons')),
         el('div', { class: 'grow' },
           el('div', { class: 'li-title', text: `${m.name}  ` }, el('span', { class: 'kv-label', text: 'v' + (m.version || '?') })),
           el('div', { class: 'li-sub', text: (m.description || '').slice(0, 180) }),
