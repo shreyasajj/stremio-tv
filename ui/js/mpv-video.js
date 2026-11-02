@@ -46,6 +46,7 @@ export class MpvVideo extends EventTarget {
       this.mpv.onEndFile((reason, error) => this._onEndFile(reason, error)),
     ];
     document.documentElement.classList.add('native-video-playing');
+    window.shell.setVideoLayer?.(true);
   }
 
   // ---- HTMLMediaElement subset used by player.js ----
@@ -107,6 +108,7 @@ export class MpvVideo extends EventTarget {
     this.mpv.command('stop');
     this.mpv.set('pause', false);
     document.documentElement.classList.remove('native-video-playing');
+    window.shell.setVideoLayer?.(false);
   }
 
   // ---- mpv extras ----

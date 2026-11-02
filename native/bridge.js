@@ -35,6 +35,7 @@
         readClipboard: () => new Promise((resolve) => native.readClipboard(resolve)),
         quit: () => native.quit(),
         setPlaybackActive: (playing) => native.setPlaybackActive(!!playing),
+        setVideoLayer: (visible) => native.setVideoLayer(!!visible),
         onWindowBlur: listeners(native.windowBlur),
         onWindowFocus: listeners(native.windowFocus),
         saveScreenshot: (path) => new Promise((resolve) => native.saveScreenshot(String(path), resolve)),

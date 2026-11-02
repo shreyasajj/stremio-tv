@@ -53,7 +53,11 @@ Window {
         anchors.fill: parent
         focus: true
         profile: profile
-        backgroundColor: "transparent"
+        // Opaque until the page asks for the video layer. Chromium only
+        // starts with a cleared, transparent surface when this changes; with
+        // it transparent all along, the last opaque frame (dialogs, the
+        // detail screen) stayed on screen over the video.
+        backgroundColor: shell.videoLayer ? "transparent" : "black"
         settings.localContentCanAccessRemoteUrls: true
         settings.playbackRequiresUserGesture: false
         settings.javascriptCanAccessClipboard: true

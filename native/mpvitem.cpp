@@ -1,12 +1,19 @@
 #include "mpvitem.h"
 #include <QDebug>
+#include <QGuiApplication>
 #include <QMetaObject>
 #include <QOpenGLContext>
 #include <QOpenGLFramebufferObject>
+#include <QOpenGLFunctions>
 #include <QQuickOpenGLUtils>
 #include <mpv/render_gl.h>
+#include <vector>
 
 namespace {
+
+QString glString(QOpenGLFunctions *gl, GLenum name) {
+    return QString::fromLatin1(reinterpret_cast<const char *>(gl->glGetString(name)));
+}
 
 void *getProcAddress(void *, const char *name) {
     auto *context = QOpenGLContext::currentContext();
@@ -43,13 +50,28 @@ public:
     void render() override {
         if (failed_ || !core_ || !core_->handle) return;
         if (!context_) {
+            auto *glContext = QOpenGLContext::currentContext();
+            auto *f = glContext->functions();
+            qInfo().noquote() << "GL:" << glString(f, GL_RENDERER) << "|" << glString(f, GL_VERSION)
+                              << (glContext->isOpenGLES() ? "(GLES)" : "");
+
             mpv_opengl_init_params gl = { getProcAddress, nullptr };
-            mpv_render_param params[] = {
+            std::vector<mpv_render_param> params = {
                 { MPV_RENDER_PARAM_API_TYPE, const_cast<char *>(MPV_RENDER_API_TYPE_OPENGL) },
                 { MPV_RENDER_PARAM_OPENGL_INIT_PARAMS, &gl },
-                { MPV_RENDER_PARAM_INVALID, nullptr },
             };
-            if (mpv_render_context_create(&context_, core_->handle, params) < 0) {
+            // mpv's render API wants the window system's display for hardware
+            // decoding interop (VAAPI frames handed straight to GL).
+#if QT_CONFIG(wayland)
+            if (auto *wl = qGuiApp->nativeInterface<QNativeInterface::QWaylandApplication>())
+                params.push_back({ MPV_RENDER_PARAM_WL_DISPLAY, wl->display() });
+#endif
+#if QT_CONFIG(xcb)
+            if (auto *x11 = qGuiApp->nativeInterface<QNativeInterface::QX11Application>())
+                params.push_back({ MPV_RENDER_PARAM_X11_DISPLAY, x11->display() });
+#endif
+            params.push_back({ MPV_RENDER_PARAM_INVALID, nullptr });
+            if (mpv_render_context_create(&context_, core_->handle, params.data()) < 0) {
                 qWarning() << "Failed to initialize the libmpv OpenGL renderer";
                 context_ = nullptr;
                 failed_ = true;
@@ -75,10 +97,9 @@ private:
     bool failed_ = false;
 };
 
-MpvItem::MpvItem(QQuickItem *parent) : QQuickFramebufferObject(parent) {
-    // mpv renders top-down into the FBO; Qt Quick samples it bottom-up.
-    setMirrorVertically(true);
-}
+// No mirroring: with FLIP_Y off mpv renders bottom-up like any GL texture,
+// which is what Qt Quick samples.
+MpvItem::MpvItem(QQuickItem *parent) : QQuickFramebufferObject(parent) {}
 
 MpvItem::~MpvItem() {
     if (core_) {

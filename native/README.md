@@ -82,4 +82,6 @@ NATIVE_BIN=native/build/stremio-tv-native npm run test:native
 | `STREMIO_TV_WINDOWED=1` | don't force fullscreen |
 | `STREMIO_TV_UI=/path/index.html` | load a different UI build |
 | `STREMIO_TV_TEST=1` | enable the screenshot hook used by tests |
+| `STREMIO_TV_MPV_LOG=v` | more mpv logging (`v`, `debug`, `trace`); default `warn` |
+| `STREMIO_TV_MPV_OPTIONS="hwdec=no"` | extra mpv options, comma-separated, applied after the defaults |
 | `QTWEBENGINE_REMOTE_DEBUGGING=127.0.0.1:9222` | inspect the UI from Chrome's `chrome://inspect` |

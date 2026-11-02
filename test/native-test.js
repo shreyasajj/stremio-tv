@@ -34,6 +34,24 @@ async function waitFor(fn, { timeout = 15000, interval = 200 } = {}) {
   }
 }
 
+// Records a PulseAudio source for `ms` and returns the loudest 16-bit sample.
+function recordPeak(source, ms) {
+  return new Promise((resolve) => {
+    const rec = spawn('parec', ['-d', source, '--format=s16le', '--rate=48000', '--channels=2', '--raw'],
+      { stdio: ['ignore', 'pipe', 'ignore'] });
+    let peak = 0;
+    let rest = Buffer.alloc(0); // a sample split across chunks
+    rec.stdout.on('data', (chunk) => {
+      const buf = Buffer.concat([rest, chunk]);
+      const end = buf.length & ~1;
+      for (let i = 0; i < end; i += 2) peak = Math.max(peak, Math.abs(buf.readInt16LE(i)));
+      rest = buf.subarray(end);
+    });
+    rec.on('error', () => resolve(0));
+    setTimeout(() => { rec.kill(); resolve(peak); }, ms);
+  });
+}
+
 (async () => {
   const addon = mockAddon.createServer().listen(mockAddon.PORT);
   fs.mkdirSync(SHOT_DIR, { recursive: true });
@@ -51,7 +69,7 @@ async function waitFor(fn, { timeout = 15000, interval = 200 } = {}) {
     for (const line of String(d).split('\n')) {
       if (!line.trim()) continue;
       appLog.push(line);
-      if (process.env.VERBOSE || /\[mpv\]|error|Error|FAIL/.test(line)) console.log('  app:', line);
+      if (process.env.VERBOSE || /\[mpv\]|GL:|error|Error|FAIL/.test(line)) console.log('  app:', line);
     }
   };
   app.stdout.on('data', onOutput);
@@ -80,18 +98,22 @@ async function waitFor(fn, { timeout = 15000, interval = 200 } = {}) {
     if (!ok) console.log(`  (screenshot ${name} failed)`);
     return ok ? file : null;
   };
-  // Share of clearly non-black pixels in the centre of a window grab.
-  const litFraction = (file) => {
+  // The sample is SMPTE-style colour bars: in a correct frame the red and the
+  // blue bar each cover about a sixth of the window. A stale UI frame over the
+  // video, a black frame or a green (chroma-less) frame all score ~0.
+  const barShares = (file) => {
     const png = PNG.sync.read(fs.readFileSync(file));
-    let lit = 0, total = 0;
-    for (let y = Math.floor(png.height * 0.3); y < png.height * 0.7; y += 4) {
-      for (let x = Math.floor(png.width * 0.3); x < png.width * 0.7; x += 4) {
+    let red = 0, blue = 0, total = 0;
+    for (let y = 0; y < png.height; y += 4) {
+      for (let x = 0; x < png.width; x += 4) {
         const i = (y * png.width + x) * 4;
-        if (png.data[i] + png.data[i + 1] + png.data[i + 2] > 60) lit++;
+        const [r, g, b] = [png.data[i], png.data[i + 1], png.data[i + 2]];
+        if (r > 180 && g < 90 && b < 90) red++;
+        if (b > 180 && r < 90 && g < 90) blue++;
         total++;
       }
     }
-    return lit / total;
+    return { red: red / total, blue: blue / total };
   };
 
   // ---- Bridge ----
@@ -135,8 +157,19 @@ async function waitFor(fn, { timeout = 15000, interval = 200 } = {}) {
   await page.waitForTimeout(1500);
   const playingShot = await shot('02-playing');
   // Overlay is hidden in lean-back mode: the centre must be mpv's video.
-  const lit = playingShot ? litFraction(playingShot) : 0;
-  check('video is visible through the transparent UI', lit > 0.2, `${Math.round(lit * 100)}% lit`);
+  const bars = playingShot ? barShares(playingShot) : { red: 0, blue: 0 };
+  check('video is visible through the transparent UI', bars.red > 0.1 && bars.blue > 0.1,
+    `red bar ${Math.round(bars.red * 100)}%, blue bar ${Math.round(bars.blue * 100)}%`);
+
+  // ---- Audio reaches the sound server (dev container: PulseAudio null sink) ----
+  const sink = process.env.STREMIO_TV_AUDIO_SINK;
+  if (sink) {
+    check('mpv outputs to PulseAudio', (await mpvGet('current-ao')) === 'pulse', String(await mpvGet('current-ao')));
+    const peak = await recordPeak(`${sink}.monitor`, 1500);
+    check('playback is audible on the sink', peak > 500, `peak ${peak}/32767`);
+  } else {
+    console.log('SKIP  audio checks (no STREMIO_TV_AUDIO_SINK)');
+  }
 
   // ---- OK pauses / resumes ----
   await key('Enter');
