@@ -1,3 +1,9 @@
+### 0.4.0
+- **Home Assistant.** Optional, off by default: Stremio TV can show what is playing in Home Assistant (state, title and episode, position, duration, % watched, poster) and take play/pause, stop and skip ±30 s from it. It uses your own MQTT broker (e.g. the Mosquitto add-on) with MQTT Discovery, so a "Stremio TV" device appears in HA by itself, and HA shows it offline the moment the app quits or crashes.
+- Set it up in **Settings → Home Assistant**: scan a QR code and type the broker login on your phone (the broker address is filled in when Home Assistant is found on your network), or enter it with the on-screen keyboard. Both end in a connection test. See the README for the entities and an example automation.
+
+---
+
 ### 0.3.1
 - Fix the screen occasionally reloading by itself while browsing. Focusing a poster or episode card could crash the web view on some systems, mostly with software rendering; card focus now changes instantly instead of animating.
 - The native Qt + libmpv app is now the only build: the old Electron version and its install script are gone. Install from the Flatpak bundles on this page.
