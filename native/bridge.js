@@ -1,6 +1,7 @@
 // Injected into the web UI (after qwebchannel.js) by the native shell.
 // Builds `window.shell` (quit, clipboard, subtitle fetch, screensaver,
-// window blur) plus `shell.mpv` for the embedded libmpv player. The UI awaits
+// window blur) plus `shell.mpv` for the embedded libmpv player and
+// `shell.homeAssistant` for the MQTT link to Home Assistant. The UI awaits
 // `window.shellReady` before booting.
 (function () {
   'use strict';
@@ -10,6 +11,7 @@
     new QWebChannel(qt.webChannelTransport, (channel) => {
       const native = channel.objects.native;
       const mpv = channel.objects.mpv;
+      const ha = channel.objects.homeAssistant;
 
       let fetchSeq = 0;
       const pendingFetches = new Map();
@@ -17,6 +19,15 @@
         const done = pendingFetches.get(id);
         if (done) { pendingFetches.delete(id); done(result); }
       });
+
+      let testSeq = 0;
+      const pendingTests = new Map();
+      if (ha) {
+        ha.testDone.connect((id, result) => {
+          const done = pendingTests.get(id);
+          if (done) { pendingTests.delete(id); done(result); }
+        });
+      }
 
       const listeners = (signal) => {
         const set = new Set();
@@ -46,6 +57,21 @@
           onProperty: listeners(mpv.propertyChanged),
           onFileLoaded: listeners(mpv.fileLoaded),
           onEndFile: listeners(mpv.endFile),
+        } : null,
+        homeAssistant: ha ? {
+          configure: (settings) => ha.configure(settings),
+          publish: (state) => ha.publish(state),
+          status: () => new Promise((resolve) => ha.status(resolve)),
+          onStatus: listeners(ha.statusChanged),
+          onCommand: listeners(ha.command),
+          test: (settings) => new Promise((resolve) => {
+            const id = ++testSeq;
+            pendingTests.set(id, resolve);
+            ha.testConnection(settings, id);
+          }),
+          startPhoneSetup: (current) => new Promise((resolve) => ha.startPhoneSetup(current, resolve)),
+          stopPhoneSetup: () => ha.stopPhoneSetup(),
+          onPhoneSetup: listeners(ha.setupEvent),
         } : null,
       };
       resolve();

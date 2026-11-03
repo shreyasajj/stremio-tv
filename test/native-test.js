@@ -7,6 +7,8 @@
 //   NATIVE_BIN=native/build/stremio-tv-native node test/native-test.js
 //
 // Needs a display (Wayland or X11). In Docker: native/dev/run-tests.sh.
+// With mosquitto installed (the dev container), also tests the Home Assistant
+// MQTT link against a real broker.
 
 const path = require('path');
 const fs = require('fs');
@@ -14,6 +16,7 @@ const { spawn } = require('child_process');
 const { CdpPage } = require('./cdp-page.js');
 const { PNG } = require('playwright-core/lib/utilsBundle');
 const mockAddon = require('./mock-addon.js');
+const ha = require('./ha-helpers.js');
 
 const BIN = process.env.NATIVE_BIN || path.join(__dirname, '..', 'native', 'build', 'stremio-tv-native');
 const CDP_PORT = Number(process.env.CDP_PORT || 9333);
@@ -69,13 +72,23 @@ function recordPeak(source, ms) {
     for (const line of String(d).split('\n')) {
       if (!line.trim()) continue;
       appLog.push(line);
-      if (process.env.VERBOSE || /\[mpv\]|GL:|error|Error|FAIL/.test(line)) console.log('  app:', line);
+      if (process.env.VERBOSE || /\[mpv\]|GL:|error|Error|FAIL|terminated/.test(line)) console.log('  app:', line);
     }
   };
   app.stdout.on('data', onOutput);
   app.stderr.on('data', onOutput);
   let appExited = false;
-  app.on('exit', (code) => { appExited = true; console.log(`  app exited (${code})`); });
+  let stopping = false;
+  app.on('exit', (code) => {
+    appExited = true;
+    console.log(`  app exited (${code})`);
+    // Exiting on its own leaves the test waiting on a dead DevTools socket.
+    if (!stopping) {
+      console.log('\n--- last app log lines ---\n' + appLog.slice(-40).join('\n'));
+      console.log(`\nFATAL app exited during the test (${failures} failures so far)`);
+      process.exit(1);
+    }
+  });
 
   let lastConnectError = null;
   const page = await waitFor(() => CdpPage.connect(CDP_PORT, 'index.html')
@@ -260,15 +273,158 @@ function recordPeak(source, ms) {
   const fetched = await page.evaluate((u) => window.shell.proxyFetch(u), `${mockAddon.BASE}/sample.srt`);
   check('proxyFetch returns subtitle text', fetched.ok && fetched.body.includes('-->'), `status ${fetched.status}`);
 
+  // ---- Home Assistant over MQTT, against a real Mosquitto ----
+  let broker = null;
+  let mdns = null;
+  if (ha.haveMosquitto()) {
+    broker = await ha.startBroker();
+    mdns = await ha.mdnsResponder('10.1.2.3');
+    await homeAssistantChecks();
+  } else {
+    console.log('SKIP  Home Assistant checks (no mosquitto)');
+  }
+
   check('app still running', !appExited);
   page.close();
+  stopping = true;
   app.kill('SIGTERM');
   const exited = await waitFor(() => appExited, { timeout: 8000 });
   check('app exits on SIGTERM', !!exited);
+  if (broker) {
+    // Killed without a clean disconnect: the broker publishes the last will.
+    const offline = await waitFor(async () => (await ha.retained('stremio_tv/living_room/availability')) === 'offline',
+      { timeout: 8000, interval: 300 });
+    check('HA: last will marks the app offline when killed', !!offline,
+      String(await ha.retained('stremio_tv/living_room/availability')));
+    broker.proc.kill();
+    mdns.close();
+  }
   addon.close();
   if (failures && !process.env.VERBOSE) {
     console.log('\n--- last app log lines ---\n' + appLog.slice(-30).join('\n'));
   }
   console.log(failures ? `\n${failures} FAILURES` : '\nAll native checks passed.');
   process.exit(failures ? 1 : 0);
+
+  async function homeAssistantChecks() {
+    const base = 'stremio_tv/living_room';
+    const watcher = ha.watch(['stremio_tv/#', 'homeassistant/#']);
+    const focusedAttr = (a) => page.evaluate((x) => document.activeElement?.getAttribute(x), a);
+    const sub = (w) => page.evaluate((x) => document.querySelector(`[data-ha="${x}"] .li-sub`)?.textContent || '', w);
+    const modalText = () => page.evaluate(() => document.getElementById('modal-root').textContent);
+    const pressUntil = async (k, done, max = 15) => {
+      for (let i = 0; i < max && !(await done()); i++) await key(k);
+      return done();
+    };
+    const stateMsgs = () => watcher.messages.filter((m) => m.topic === `${base}/state` && m.payload)
+      .map((m) => ({ ...m, json: JSON.parse(m.payload) }));
+    const retainedState = async () => JSON.parse((await ha.retained(`${base}/state`)) || 'null');
+
+    // Settings -> Home Assistant -> on -> Set up with phone, by remote.
+    await pressUntil('ArrowDown', async () => (await focusedAttr('data-setting')) === 'home-assistant');
+    check('HA: Settings item reachable by arrow keys', (await focusedAttr('data-setting')) === 'home-assistant');
+    await key('Enter');
+    await page.waitForSelector('[data-ha="toggle"]');
+    await page.waitForTimeout(300);
+    check('HA: screen opens on the on/off item', (await focusedAttr('data-ha')) === 'toggle');
+    await key('Enter');
+    check('HA: turned on', (await page.text('.toggle-pill')) === 'On');
+    await key('ArrowDown');
+    check('HA: next is Set up with phone', (await focusedAttr('data-ha')) === 'phone');
+    await key('Enter');
+    await page.waitForSelector('#modal-root img.ha-qr');
+    const url = (await page.text('.ha-setup-url')).trim();
+    check('HA: TV shows the setup link', /^http:\/\/[\d.]+:\d+\/setup\?code=[A-Z2-9]{6}$/.test(url), url);
+    check('HA: TV shows a QR code', !!(await waitFor(() => page.evaluate(() => document.querySelector('.ha-qr').naturalWidth > 100), { timeout: 3000 })));
+    await page.waitForTimeout(300); // let the dialog fade in
+    await shot('07-ha-phone-setup');
+
+    // The phone: the form, pre-filled with HA's address from mDNS.
+    const form = await waitFor(async () => {
+      const body = await (await fetch(url)).text();
+      return body.includes('value="10.1.2.3"') ? body : null;
+    }, { timeout: 6000, interval: 500 });
+    check('HA: phone page serves the form', !!form || (await (await fetch(url)).text()).includes('<form'));
+    check('HA: broker address pre-filled from mDNS', !!form, `${mdns.queries.length} mDNS queries`);
+    const wrongCode = await fetch(url.replace(/code=\w+/, 'code=AAAAAA'));
+    check('HA: a wrong one-time code is refused', wrongCode.status === 403, String(wrongCode.status));
+    const post = async (password) => (await fetch(url, {
+      method: 'POST',
+      body: new URLSearchParams({ host: ha.BROKER.host, port: String(ha.BROKER.port), username: ha.BROKER.username, password }),
+    })).json();
+    const bad = await post('wrong');
+    check('HA: phone sees the broker rejecting a bad password', !bad.ok && /username or password|authoris/i.test(bad.error), bad.error);
+    check('HA: TV shows the same error', /username or password|authoris/i.test(await modalText()), (await modalText()).slice(-120));
+    const good = await post(ha.BROKER.password);
+    check('HA: phone sees Connected', good.ok === true, JSON.stringify(good));
+    check('HA: TV shows Connected', !!(await waitFor(async () => (await modalText()).includes('Connected'), { timeout: 3000 })));
+    const after = await fetch(url).then(() => 'still up', () => 'closed');
+    check('HA: setup page stops after a success', after === 'closed', after);
+    await key('Enter');
+    check('HA: Done closes the dialog', (await page.count('#modal-root .modal')) === 0);
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('stv.settings')));
+    check('HA: phone login stored', saved.haEnabled && saved.haHost === ha.BROKER.host && saved.haUsername === ha.BROKER.username);
+    const connected = await waitFor(async () => (await sub('toggle')).includes('Connected'), { timeout: 8000 });
+    check('HA: status shows Connected', !!connected, await sub('toggle'));
+    await shot('08-ha-connected');
+
+    // Discovery, availability and the idle state, all retained.
+    const discovery = JSON.parse((await ha.retained('homeassistant/device/stremio_tv_living_room/config')) || 'null');
+    check('HA: device discovery published', discovery?.dev?.name === 'Stremio TV' && discovery.dev.ids?.[0] === 'stremio_tv_living_room');
+    const cmps = discovery?.cmps || {};
+    const platforms = Object.fromEntries(Object.entries(cmps).map(([k, v]) => [k, v.p]).sort());
+    check('HA: discovery declares every entity', JSON.stringify(platforms) === JSON.stringify({
+      duration: 'sensor', play_pause: 'button', position: 'sensor', poster: 'image', progress: 'sensor',
+      skip_forward: 'button', state: 'sensor', stop: 'button', title: 'sensor',
+    }), JSON.stringify(platforms));
+    check('HA: discovery topics', discovery?.state_topic === `${base}/state` && discovery?.availability_topic === `${base}/availability`
+      && discovery?.command_topic === `${base}/command`);
+    check('HA: availability is online (retained)', (await ha.retained(`${base}/availability`)) === 'online');
+    check('HA: idle state retained', (await retainedState())?.state === 'idle');
+
+    // Playing: the retained state follows the player. From the start, so
+    // the 30 s sample outlasts the checks below.
+    await page.evaluate(() => localStorage.removeItem('stv.library'));
+    await page.evaluate(() => window.stremioTV.router.push('detail', { type: 'movie', id: 'mock:movie1' }));
+    await page.waitForSelector('.detail-title', { timeout: 10000 });
+    await page.waitForTimeout(500);
+    await page.evaluate(() => [...document.querySelectorAll('.screen:not(.hidden) .btn')]
+      .find((b) => /Play|Resume/.test(b.textContent))?.focus());
+    await key('Enter');
+    await page.waitForSelector('.modal .list-item', { timeout: 10000 });
+    await key('Enter');
+    await waitFor(async () => (await mpvGet('time-pos')) > 0.5, { timeout: 20000 });
+    const playingState = await waitFor(async () => {
+      const st = await retainedState();
+      return st?.state === 'playing' && st.duration ? st : null;
+    }, { timeout: 8000 });
+    check('HA: playing state retained', !!playingState, JSON.stringify(playingState));
+    if (playingState) {
+      check('HA: state message has every field', JSON.stringify(Object.keys(playingState).sort()) === JSON.stringify(
+        ['duration', 'episode', 'imdb_id', 'position', 'poster', 'progress', 'state', 'title', 'type', 'updated_at']));
+      check('HA: title and type', playingState.title === 'Mock Movie 1' && playingState.type === 'movie' && playingState.episode === null);
+      check('HA: duration in whole seconds', Number.isInteger(playingState.duration) && playingState.duration > 0, String(playingState.duration));
+      check('HA: updated_at is UTC ISO 8601', /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/.test(playingState.updated_at), playingState.updated_at);
+    }
+
+    // Position updates every 15 s while playing.
+    const first = stateMsgs().filter((m) => m.json.state === 'playing').pop();
+    const update = await waitFor(() => stateMsgs().find((m) => m.at > first.at + 10000 && m.json.state === 'playing'),
+      { timeout: 20000, interval: 500 });
+    check('HA: position update while playing', !!update && update.json.position > first.json.position && update.retained === false,
+      update ? `${first.json.position} s -> ${update.json.position} s after ${((update.at - first.at) / 1000).toFixed(1)} s` : 'none');
+    check('HA: progress follows position', !!update && update.json.progress > 0 && update.json.progress <= 100,
+      update ? `${update.json.progress}%` : '');
+
+    // A command from Home Assistant: pause, then play.
+    await ha.publish(`${base}/command`, 'pause');
+    check('HA: "pause" from MQTT pauses mpv', !!(await waitFor(() => mpvGet('pause'), { timeout: 4000 })));
+    const paused = await waitFor(async () => (await retainedState())?.state === 'paused', { timeout: 4000 });
+    check('HA: paused state retained', !!paused);
+    await shot('09-ha-paused-by-mqtt');
+    await ha.publish(`${base}/command`, 'play');
+    check('HA: "play" from MQTT resumes', !!(await waitFor(async () => (await mpvGet('pause')) === false, { timeout: 4000 })));
+    check('HA: playing again', !!(await waitFor(async () => (await retainedState())?.state === 'playing', { timeout: 4000 })));
+    watcher.stop();
+  }
 })().catch((e) => { console.error('FATAL', e); process.exit(1); });

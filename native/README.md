@@ -19,13 +19,16 @@ browser-based UI tests.
 | `mpvcontroller.*` | libmpv core: commands, options, observed properties → UI |
 | `mpvitem.*` | `MpvVideo` QML item: OpenGL render of the mpv frames |
 | `shellbridge.*` | `window.shell`: subtitle fetch, clipboard, quit, screensaver inhibit |
+| `homeassistant.*` | `shell.homeAssistant`: MQTT link to Home Assistant (libmosquitto), discovery, last will, commands |
+| `phonesetup.*` | the "Set up with phone" page on the LAN, its QR code and the mDNS lookup of Home Assistant |
+| `third_party/qrcodegen` | Nayuki's QR Code generator (MIT) |
 | `bridge.js` | injected into the page; builds `window.shell` over QWebChannel |
 | `Main.qml` | window, video item, web view, persistent profile |
 
 ## Build & run from source (KDE neon / Debian / Ubuntu 24.10+)
 
 ```bash
-sudo apt install build-essential cmake ninja-build pkg-config libmpv-dev \
+sudo apt install build-essential cmake ninja-build pkg-config libmpv-dev libmosquitto-dev \
   qt6-base-dev qt6-declarative-dev qt6-webengine-dev qt6-webchannel-dev \
   qml6-module-qtquick qml6-module-qtquick-window qml6-module-qtwebengine \
   qml6-module-qtwebchannel qt6-wayland

@@ -30,6 +30,13 @@ export const DEFAULT_SETTINGS = {
   // Native (libmpv) shell only:
   audioDevice: 'auto',     // mpv audio-device, e.g. alsa/hdmi:CARD=PCH,DEV=0
   audioPassthrough: '',    // mpv audio-spdif codec list; '' = decode to PCM
+  // Home Assistant over MQTT (native shell only); off until turned on.
+  haEnabled: false,
+  haHost: '',              // broker address, e.g. 192.168.1.10
+  haPort: 1883,
+  haUsername: '',
+  haPassword: '',
+  haBox: 'living_room',    // topic name: stremio_tv/<box>/...
 };
 
 export const Storage = {

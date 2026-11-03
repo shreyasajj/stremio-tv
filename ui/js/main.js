@@ -6,6 +6,7 @@ import { el, toast, closeTopModal, hasOpenModal, confirmModal } from './ui.js';
 import { installedAddons, installDefaultAddons } from './addons.js';
 import { Storage } from './storage.js';
 import { isPlayerOpen } from './player.js';
+import { initHomeAssistant } from './homeassistant.js';
 
 import * as home from './screens/home.js';
 import * as discover from './screens/discover.js';
@@ -14,8 +15,9 @@ import * as detail from './screens/detail.js';
 import * as library from './screens/library.js';
 import * as addons from './screens/addons.js';
 import * as settings from './screens/settings.js';
+import * as homeassistant from './screens/homeassistant.js';
 
-const SCREENS = { home, discover, search, detail, library, addons, settings };
+const SCREENS = { home, discover, search, detail, library, addons, settings, homeassistant };
 const container = document.getElementById('screens');
 const sidebar = document.getElementById('sidebar');
 
@@ -124,6 +126,7 @@ async function boot() {
     router.back();
   });
   wireSidebar();
+  initHomeAssistant();
   // Re-render the underlying screen when playback ends so Resume buttons and
   // Continue Watching rows reflect the new progress.
   document.addEventListener('player:closed', () => router.refresh());

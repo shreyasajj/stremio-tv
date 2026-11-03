@@ -15,6 +15,8 @@ command: stremio-tv-native
 
 finish-args:
   - --share=ipc
+  # Addons and streams; also the Home Assistant MQTT link, its phone setup
+  # page on the LAN and the mDNS lookup of Home Assistant.
   - --share=network
   - --socket=wayland
   - --socket=fallback-x11
@@ -117,6 +119,27 @@ modules:
         url: https://github.com/mpv-player/mpv.git
         tag: v0.41.0
         commit: 41f6a645068483470267271e1d09966ca3b9f413
+
+  # MQTT client for the Home Assistant link: the library only (no broker,
+  # clients or plugins). 2.0.x: 2.1 needs cJSON even for the library. TLS
+  # stays on: 2.0.22's library links OpenSSL even with WITH_TLS=OFF.
+  - name: libmosquitto
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DWITH_BROKER=OFF
+      - -DWITH_CLIENTS=OFF
+      - -DWITH_APPS=OFF
+      - -DWITH_PLUGINS=OFF
+      - -DDOCUMENTATION=OFF
+      - -DWITH_LIB_CPP=OFF
+      - -DWITH_CJSON=OFF
+      - -DWITH_STATIC_LIBRARIES=OFF
+    sources:
+      - type: git
+        url: https://github.com/eclipse-mosquitto/mosquitto.git
+        tag: v2.0.22
+        commit: 766fa2c5a9bed6c65249cf555f430b982c417480
 
   - name: stremio-tv
     buildsystem: cmake-ninja

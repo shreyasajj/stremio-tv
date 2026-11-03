@@ -5,6 +5,7 @@ import { Storage } from '../storage.js';
 import { oskPrompt } from '../keyboard.js';
 import { logout, loggedInEmail } from '../stremio-api.js';
 import { nativeMpvAvailable, PASSTHROUGH_PRESETS } from '../mpv-video.js';
+import { haAvailable, statusText } from '../homeassistant.js';
 import { icon } from '../icons.js';
 
 export async function render({ router }) {
@@ -111,6 +112,25 @@ export async function render({ router }) {
         }
       }
     );
+  }
+
+  // Home Assistant (native shell only)
+  if (haAvailable()) {
+    const item = settingItem('Home Assistant', '', () => router.push('homeassistant'), { attrs: { 'data-setting': 'home-assistant' } });
+    const sub = item.querySelector('.li-sub');
+    const describe = (status) => {
+      const s = Storage.getSettings();
+      sub.textContent = s.haEnabled
+        ? `${statusText(status, s)}. Sends what you watch to your own MQTT broker.`
+        : 'Off. When on, sends what you watch (title, position, poster) to your own MQTT broker, and lets Home Assistant pause or stop playback.';
+    };
+    describe(await window.shell.homeAssistant.status());
+    // Live status while this screen exists; a re-rendered screen subscribes anew.
+    const off = window.shell.homeAssistant.onStatus((status) => {
+      if (item.isConnected) item._shown = true;
+      else if (item._shown) { off(); return; }
+      describe(status);
+    });
   }
 
   // Clear watch history

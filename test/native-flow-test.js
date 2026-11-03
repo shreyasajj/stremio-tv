@@ -143,9 +143,212 @@ function check(name, cond, info = '') {
   await page.waitForTimeout(STREAM_DELAY_MS + 500);
   check('Cancel closes the search for good', (await modalCount()) === 0);
 
+  await homeAssistantChecks();
+
   await browser.close();
   ui.close();
   addon.close();
   console.log(failures ? `\n${failures} FAILURES` : '\nAll native-flow checks passed.');
   process.exit(failures ? 1 : 0);
+
+  // ---- Home Assistant: Settings by remote alone, publishing, commands ----
+  async function homeAssistantChecks() {
+    const fakeHA = (expr) => page.evaluate(`(() => { const ha = window.__fakeHA; return ${expr}; })()`);
+    const focused = (attr) => page.evaluate((a) => document.activeElement?.getAttribute(a), attr);
+    const subOf = (which) => page.evaluate((w) => document.querySelector(`[data-ha="${w}"] .li-sub`)?.textContent || '', which);
+    const lastConfigured = () => fakeHA('ha.configured[ha.configured.length - 1]');
+    const lastPublished = () => fakeHA('ha.published[ha.published.length - 1]');
+    // Arrow keys until `done()` holds (at most `max` presses).
+    const pressUntil = async (k, done, max = 15) => {
+      for (let i = 0; i < max; i++) {
+        if (await done()) return true;
+        await press(k, 100);
+      }
+      return done();
+    };
+    // Type on the on-screen keyboard with arrows + OK only, then Done.
+    const oskKey = async (label) => {
+      for (let i = 0; i < 40; i++) {
+        const d = await page.evaluate((l) => {
+          const target = [...document.querySelectorAll('#modal-root .osk-key')].find((k) => k.textContent === l);
+          if (!target) return { missing: true };
+          if (document.activeElement === target) return { here: true };
+          const a = document.activeElement.getBoundingClientRect();
+          const b = target.getBoundingClientRect();
+          return { dx: b.left + b.width / 2 - (a.left + a.width / 2), dy: b.top + b.height / 2 - (a.top + a.height / 2) };
+        }, label);
+        if (d.missing) throw new Error(`no on-screen key "${label}"`);
+        if (d.here) { await press('Enter', 60); return; }
+        if (Math.abs(d.dy) > 10) await press(d.dy > 0 ? 'ArrowDown' : 'ArrowUp', 30);
+        else await press(d.dx > 0 ? 'ArrowRight' : 'ArrowLeft', 30);
+      }
+      throw new Error(`could not reach on-screen key "${label}"`);
+    };
+    const oskType = async (text, { clear = false } = {}) => {
+      if (clear) await oskKey('Clear');
+      for (const ch of text) await oskKey(ch);
+      await oskKey('Done');
+      await page.waitForTimeout(200);
+    };
+    const toItem = async (which) => {
+      const ok = await pressUntil('ArrowDown', async () => (await focused('data-ha')) === which)
+        || await pressUntil('ArrowUp', async () => (await focused('data-ha')) === which);
+      if (!ok) throw new Error(`could not reach the "${which}" item`);
+    };
+
+    check('HA: boot configures the link as off', (await fakeHA('ha.configured[0]'))?.enabled === false);
+    check('HA: boot reports idle', (await fakeHA('ha.published[0]'))?.state === 'idle');
+
+    // Into Settings from the detail page: Left into the rail, down to Settings.
+    await pressUntil('ArrowLeft', () => page.evaluate(() => !!document.activeElement.closest('#sidebar')), 10);
+    await pressUntil('ArrowDown', async () => (await page.evaluate(() => document.activeElement.dataset.screen)) === 'settings', 10);
+    await press('Enter', 400);
+    const haItem = () => page.evaluate(() => document.querySelector('[data-setting="home-assistant"]')?.textContent || '');
+    check('HA: Settings lists Home Assistant', (await haItem()).includes('Home Assistant'));
+    check('HA: the item says what is sent, and that it is off', /Off.*sends what you watch.*your own MQTT broker/.test(await haItem()), await haItem());
+    await pressUntil('ArrowDown', async () => (await focused('data-setting')) === 'home-assistant');
+    check('HA: reachable with arrow keys', (await focused('data-setting')) === 'home-assistant');
+    await press('Enter', 400);
+    check('HA: screen opens on the on/off item', (await focused('data-ha')) === 'toggle');
+    await shot('ha-1-screen');
+
+    // Enter manually: four keyboard prompts, then the connection test.
+    await toItem('manual');
+    await press('Enter', 300);
+    check('HA: manual entry asks for the broker address', (await modalText()).includes('Broker address'));
+    await oskType('broker.test');
+    check('HA: then the port, pre-filled with 1883', (await modalText()).includes('port')
+      && (await page.evaluate(() => document.querySelector('#modal-root .osk-display').textContent)).includes('1883'));
+    await oskType('');
+    check('HA: then the username', (await modalText()).includes('username'));
+    await oskType('stremio');
+    check('HA: then the password', (await modalText()).includes('password'));
+    await oskType('secret');
+    await page.waitForTimeout(400);
+    const cfg = await lastConfigured();
+    check('HA: manual entry configures the link',
+      cfg && cfg.enabled && cfg.host === 'broker.test' && cfg.port === 1883 && cfg.username === 'stremio'
+        && cfg.password === 'secret' && cfg.box === 'living_room', JSON.stringify(cfg));
+    check('HA: and ends in a connection test', (await fakeHA('ha.tests.length')) === 1 && (await subOf('test')).includes('Connected'), await subOf('test'));
+    check('HA: live status shows Connected', (await subOf('toggle')).includes('Connected to broker.test:1883'), await subOf('toggle'));
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('stv.settings')));
+    check('HA: settings stored', stored.haEnabled === true && stored.haHost === 'broker.test' && stored.haPassword === 'secret');
+    await shot('ha-2-connected');
+
+    // One field on its own: a wrong password shows the broker's error.
+    await toItem('password');
+    await press('Enter', 300);
+    await oskType('nope', { clear: true });
+    await page.waitForTimeout(200);
+    check('HA: password changed alone', (await lastConfigured()).password === 'nope');
+    check('HA: the broker error shows', (await subOf('toggle')).includes('Not authorised'), await subOf('toggle'));
+    await toItem('test');
+    await press('Enter', 400);
+    check('HA: Test connection shows the error', (await subOf('test')).includes('Not authorised'), await subOf('test'));
+    await toItem('box');
+    await press('Enter', 300);
+    await oskType('den', { clear: true });
+    check('HA: box name editable', (await lastConfigured()).box === 'den' && (await subOf('box')).includes('stremio_tv/den/'), await subOf('box'));
+    await press('Enter', 300);
+    await oskType('living_room', { clear: true });
+
+    // Set up with phone: QR + link; the phone's login fills the same fields.
+    await toItem('phone');
+    await press('Enter', 400);
+    check('HA: phone setup shows a QR code', await page.evaluate(() => !!document.querySelector('#modal-root img.ha-qr')?.src.startsWith('data:image/png')));
+    check('HA: and the same link in text', (await modalText()).includes('http://192.168.1.50:8765/setup?code=4F7K9Q'));
+    check('HA: the setup page is running', await fakeHA('ha.setup.open'));
+    check('HA: focus is on the dialog button', await page.evaluate(() => !!document.activeElement.closest('#modal-root')));
+    await shot('ha-3-phone');
+    await page.evaluate(() => window.__fakeHA.phone({ phase: 'testing' }));
+    await page.waitForTimeout(100);
+    check('HA: TV shows the test running', (await modalText()).includes('Testing'));
+    await page.evaluate(() => window.__fakeHA.phone({ phase: 'done', ok: false, error: 'Not authorised: check the username and password' }));
+    await page.waitForTimeout(100);
+    check('HA: TV shows the phone attempt failing', (await modalText()).includes('Not authorised'));
+    await page.evaluate(() => window.__fakeHA.phone({
+      phase: 'done', ok: true, error: '', settings: { host: '10.0.0.2', port: 1884, username: 'phone', password: 'secret' },
+    }));
+    await page.waitForTimeout(300);
+    check('HA: TV shows Connected', (await modalText()).includes('Connected'));
+    const phoneCfg = await lastConfigured();
+    check('HA: phone login configures the link', phoneCfg.host === '10.0.0.2' && phoneCfg.port === 1884
+      && phoneCfg.username === 'phone' && phoneCfg.enabled, JSON.stringify(phoneCfg));
+    check('HA: and fills the same fields', (await subOf('host')) === '10.0.0.2' && (await subOf('port')) === '1884');
+    await press('Enter', 300);
+    check('HA: Done closes the dialog', (await modalCount()) === 0);
+    check('HA: closing stops the setup page', (await fakeHA('ha.setup.open')) === false);
+
+    // Off and on again.
+    await toItem('toggle');
+    await press('Enter', 200);
+    check('HA: turning off disconnects', (await lastConfigured()).enabled === false);
+    check('HA: shows Off', (await page.evaluate(() => document.querySelector('.toggle-pill').textContent)) === 'Off');
+    await press('Enter', 200);
+    check('HA: turning on reconnects', (await lastConfigured()).enabled === true);
+    await page.waitForTimeout(200);
+
+    // ---- playback publishes; commands from HA drive the player ----
+    await page.route((u) => u.pathname.includes('/meta/movie/') && u.pathname.includes('movie1'), async (route) => {
+      const res = await route.fetch();
+      const body = await res.json();
+      body.meta.imdb_id = 'tt0063350';
+      body.meta.poster = 'https://images.metahub.space/poster/medium/tt0063350/img';
+      await route.fulfill({ response: res, json: body });
+    });
+    await page.route('https://images.metahub.space/**', (route) => route.fulfill({ status: 404 }));
+    await page.evaluate(() => window.stremioTV.router.push('detail', { type: 'movie', id: 'mock:movie1' }));
+    await page.waitForSelector('.detail-title');
+    await page.waitForTimeout(300);
+    await page.evaluate(() => [...document.querySelectorAll('.screen:not(.hidden) .btn')].find((x) => /Play|Resume/.test(x.textContent)).focus());
+    await press('Enter', 300);
+    await page.waitForFunction(() => document.querySelectorAll('#modal-root .list-item').length > 0, null, { timeout: 10000 });
+    await press('Enter', 200);
+    await page.waitForFunction(() => window.__fakeMpv.state.time > 1, null, { timeout: 10000 });
+    await page.waitForTimeout(300);
+    const st = await lastPublished();
+    check('HA: playing is published', st.state === 'playing', JSON.stringify(st));
+    check('HA: with title, type and IMDb id', st.title === 'Mock Movie 1' && st.type === 'movie' && st.imdb_id === 'tt0063350' && st.episode === null);
+    check('HA: with the poster', st.poster === 'https://images.metahub.space/poster/medium/tt0063350/img');
+    check('HA: with position, duration and progress', st.position >= 0 && st.duration === 1800 && st.progress >= 0 && st.progress < 5,
+      `${st.position} / ${st.duration} = ${st.progress}%`);
+    // While playing, the position is re-sent every 15 s.
+    const sent = await fakeHA('ha.published.length');
+    await page.waitForTimeout(15500);
+    const tick = await lastPublished();
+    check('HA: position re-sent every 15 s while playing', (await fakeHA('ha.published.length')) > sent
+      && tick.state === 'playing' && tick.position >= 10 && tick.progress > 0, `${tick.position} s, ${tick.progress}%`);
+
+    await page.evaluate(() => window.__fakeHA.command('pause'));
+    await page.waitForTimeout(200);
+    check('HA: "pause" pauses mpv', await page.evaluate(() => window.__fakeMpv.state.pause === true));
+    check('HA: paused is published', (await lastPublished()).state === 'paused');
+    await page.evaluate(() => window.__fakeHA.command('pause'));
+    await page.waitForTimeout(200);
+    check('HA: a second "pause" keeps it paused', await page.evaluate(() => window.__fakeMpv.state.pause === true));
+    await page.evaluate(() => window.__fakeHA.command('play'));
+    await page.waitForTimeout(200);
+    check('HA: "play" resumes', await page.evaluate(() => window.__fakeMpv.state.pause === false));
+    check('HA: playing is published again', (await lastPublished()).state === 'playing');
+    const before = await page.evaluate(() => window.__fakeMpv.state.time);
+    await page.evaluate(() => window.__fakeHA.command('seek:+30'));
+    await page.waitForTimeout(200);
+    const after = await page.evaluate(() => window.__fakeMpv.state.time);
+    check('HA: "seek:+30" skips forward', after >= before + 29, `${before.toFixed(1)} -> ${after.toFixed(1)}`);
+    check('HA: the new position is published', (await lastPublished()).position >= Math.floor(before + 29));
+    await page.evaluate(() => window.__fakeHA.command('seek:-30'));
+    await page.waitForTimeout(200);
+    check('HA: "seek:-30" skips back', (await page.evaluate(() => window.__fakeMpv.state.time)) < after - 25);
+    await page.evaluate(() => window.__fakeHA.command('toggle'));
+    await page.waitForTimeout(200);
+    check('HA: "toggle" pauses', await page.evaluate(() => window.__fakeMpv.state.pause === true));
+    await page.evaluate(() => window.__fakeHA.command('bogus'));
+    await page.evaluate(() => window.__fakeHA.command('stop'));
+    await page.waitForTimeout(400);
+    check('HA: "stop" closes the player', !(await playerOpen()));
+    check('HA: idle is published', (await lastPublished()).state === 'idle');
+    await page.evaluate(() => window.__fakeHA.command('play'));
+    await page.waitForTimeout(200);
+    check('HA: commands with no player open are ignored', !(await playerOpen()));
+  }
 })().catch((e) => { console.error('FATAL', e); process.exit(1); });
