@@ -1,3 +1,11 @@
+### 0.5.0
+- **More of Home at once.** Move down past the first row and the title card at the top fades away; the rows slide up so three of them fill the screen. Go back up to the first row and the title card returns. Posters on Home are a little smaller so the three rows fit.
+- **New rows on Home.** New Releases (this year's movies and series from Cinemeta) now load instead of being skipped, and there are genre rows for Drama, Comedy, Action, Thriller and Sci-Fi.
+- **Next episode dates.** Series show when their next episode airs (e.g. "Next episode S2 E3 · Friday, Nov 6") on the title page and the Home title card, and as a badge on Continue Watching.
+- Fix focus leaving the nav rail: pressing Left on the rail could jump back into a row and scroll it, and Up/Down at its ends could drop into the content. The rail now holds focus until you press Right.
+
+---
+
 ### 0.4.0
 - **Home Assistant.** Optional, off by default: Stremio TV can show what is playing in Home Assistant (state, title and episode, position, duration, % watched, poster) and take play/pause, stop and skip ±30 s from it. It uses your own MQTT broker (e.g. the Mosquitto add-on) with MQTT Discovery, so a "Stremio TV" device appears in HA by itself, and HA shows it offline the moment the app quits or crashes.
 - Set it up in **Settings → Home Assistant**: scan a QR code and type the broker login on your phone (the broker address is filled in when Home Assistant is found on your network), or enter it with the on-screen keyboard. Both end in a connection test. See the README for the entities and an example automation.
