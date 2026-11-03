@@ -1,7 +1,7 @@
 // Detail (title page): full-screen backdrop, logo, fact chips and Play/Resume;
 // series get season chips and a row of episode thumbnail cards.
 
-import { el, toast, confirmModal, titleArt, factsRow, progressBar, formatTime } from '../ui.js';
+import { el, toast, confirmModal, titleArt, factsRow, nextEpisodeLine, progressBar, formatTime } from '../ui.js';
 import { getMeta } from '../addons.js';
 import { Storage } from '../storage.js';
 import { playFlow, resumeFlow, videoLabel } from '../streams.js';
@@ -38,6 +38,7 @@ export async function render({ router, params }) {
   body.append(
     titleArt(meta, { tag: 'h1', cls: 'detail-title' }),
     factsRow(meta, { chips: true, cls: 'detail-facts' }),
+    nextEpisodeLine(meta) || '',
     meta.description ? el('div', { class: 'detail-desc', text: meta.description }) : ''
   );
 

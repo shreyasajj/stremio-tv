@@ -39,6 +39,39 @@ export function metaFacts(meta, { genres = 3 } = {}) {
   return facts;
 }
 
+// The series' next unreleased episode (specials aside), or null.
+export function nextEpisode(meta, now = Date.now()) {
+  let next = null;
+  for (const v of meta?.videos || []) {
+    const time = Date.parse(v.released);
+    if (!(time > now) || v.season === 0) continue;
+    if (!next || time < next.time) next = { video: v, time };
+  }
+  return next;
+}
+
+// "Today", "Tomorrow", "Friday, Nov 6" within the week, else "Nov 14" (+ year).
+export function releaseDay(time, now = Date.now()) {
+  const day = (t) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
+  const days = Math.round((day(time) - day(now)) / 86400000);
+  if (days === 0) return 'Today';
+  if (days === 1) return 'Tomorrow';
+  const d = new Date(time);
+  if (days < 7) return d.toLocaleDateString('en', { weekday: 'long', month: 'short', day: 'numeric' });
+  const sameYear = d.getFullYear() === new Date(now).getFullYear();
+  return d.toLocaleDateString('en', { month: 'short', day: 'numeric', ...(sameYear ? {} : { year: 'numeric' }) });
+}
+
+// "S2 E5 · Friday, Nov 6" for the next episode, or null when none is scheduled.
+export function nextEpisodeText(meta) {
+  const next = nextEpisode(meta);
+  if (!next) return null;
+  const { season, episode, number } = next.video;
+  const ep = episode ?? number;
+  const label = ep !== undefined && ep !== null ? `S${season ?? 1} E${ep}` : (next.video.title || next.video.name || 'New episode');
+  return `${label} · ${releaseDay(next.time)}`;
+}
+
 const metaCache = new Map();
 
 // getMeta, remembered for the session; resolves null instead of throwing.

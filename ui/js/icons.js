@@ -26,6 +26,7 @@ const PATHS = {
   chevronDown: `<path ${STROKE} d="m6 9.5 6 6 6-6"/>`,
   chevronRight: `<path ${STROKE} d="m9.5 6 6 6-6 6"/>`,
   check: `<path ${STROKE} d="m5 12.5 4.5 4.5L19 7.5"/>`,
+  calendar: `<g ${STROKE}><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></g>`,
   star: '<path fill="currentColor" d="m12 3.2 2.6 5.5 6 .7-4.45 4.1 1.2 5.9L12 16.4l-5.35 3 1.2-5.9L3.4 9.4l6-.7z"/>',
   backspace: `<g ${STROKE}><path d="M8.5 5H20a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H8.5L3 12z"/><path d="m11.5 9.5 5 5M16.5 9.5l-5 5"/></g>`,
 };

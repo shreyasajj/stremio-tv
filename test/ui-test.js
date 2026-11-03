@@ -77,6 +77,22 @@ function check(name, cond, info = '') {
   check('a card is focused on boot', (await focusedClass()).includes('meta-card'), await focusedText());
   await shot('01-home');
 
+  // ---- Past the first row the hero gives way to three rows ----
+  const browsing = () => page.evaluate(() => document.querySelector('.home-screen').classList.contains('browsing'));
+  await key('ArrowDown');
+  await page.waitForTimeout(800);
+  check('Down past the first row hides the hero', await browsing());
+  const fullRows = await page.evaluate(() => [...document.querySelectorAll('.home-screen .row-section')].filter((sec) => {
+    const r = sec.querySelector('.meta-card .poster')?.getBoundingClientRect();
+    return r && r.top >= 0 && r.bottom <= innerHeight;
+  }).length);
+  check('three rows fit on screen while browsing', fullRows >= 3, `${fullRows} rows`);
+  check('genre rows are listed', (await page.locator('.home-screen h2.row-title').allTextContents()).some((t) => t.startsWith('Drama')));
+  await shot('01b-home-browsing');
+  await key('ArrowUp');
+  await page.waitForTimeout(800);
+  check('Up to the first row brings the hero back', !(await browsing()), await focusedText());
+
   // ---- Arrow key navigation within a row ----
   const before = await focusedText();
   await key('ArrowRight');
@@ -113,6 +129,11 @@ function check(name, cond, info = '') {
   await key('ArrowLeft');
   check('sidebar reachable with Left', (await focusedClass()).includes('sidebar-item'), await focusedText());
   check('the rail opens on the current screen (Home)', (await focusedText()) === 'Home', await focusedText());
+  await key('ArrowLeft');
+  check('Left on the rail stays on the rail', (await focusedText()) === 'Home', await focusedText());
+  await key('ArrowDown', 10, 60);
+  check('Down at the bottom of the rail stays on the rail', (await focusedClass()).includes('sidebar-item'), await focusedText());
+  await page.evaluate(() => document.querySelector('[data-screen="home"]').focus());
   await shot('02-sidebar');
 
   // ---- Sidebar -> Discover ----
@@ -248,6 +269,9 @@ function check(name, cond, info = '') {
   await key('Enter');
   await page.waitForSelector('.episode-item', { timeout: 10000 });
   check('episode list renders', await page.locator('.episode-item').count() === 3);
+  check('detail shows when the next episode airs',
+    ((await page.locator('.detail-body .next-episode').textContent().catch(() => '')) || '').includes('S2 E3'),
+    await page.locator('.detail-body .next-episode').textContent().catch(() => 'missing'));
   await page.waitForTimeout(300);
   check('series Play starts at the first episode', (await focusedText()).includes('Play S1 E1'), await focusedText());
   await key('ArrowDown');

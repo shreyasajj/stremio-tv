@@ -41,7 +41,10 @@ const SERIES = [{
       season,
       episode,
       title: `Episode ${episode}`,
-      released: `202${season}-01-0${episode}T00:00:00.000Z`,
+      // the last episode airs in three days (the "next episode" line)
+      released: season === 2 && episode === 3
+        ? new Date(Date.now() + 3 * 86400000).toISOString()
+        : `202${season}-01-0${episode}T00:00:00.000Z`,
       overview: `Season ${season}, episode ${episode} of the mock series.`,
     }))),
 }];
