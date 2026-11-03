@@ -1,3 +1,9 @@
+### 0.3.1
+- Fix the screen occasionally reloading by itself while browsing. Focusing a poster or episode card could crash the web view on some systems, mostly with software rendering; card focus now changes instantly instead of animating.
+- The native Qt + libmpv app is now the only build: the old Electron version and its install script are gone. Install from the Flatpak bundles on this page.
+
+---
+
 ### 0.3.0
 - **New look.** Redesigned for the 10-foot screen in the style of current streaming apps: near-black background, one accent colour, the Inter font (bundled), larger rounded cards, and a 5% TV-safe margin.
 - **Home hero.** The focused title's backdrop, logo, year · runtime · rating · genres and synopsis fill the top of Home and follow focus along the rows. Play and Details are one press Up.
