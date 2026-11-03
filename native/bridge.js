@@ -1,6 +1,6 @@
 // Injected into the web UI (after qwebchannel.js) by the native shell.
-// Builds the same `window.shell` the Electron preload provides, plus
-// `shell.mpv` for the embedded libmpv player. The UI awaits
+// Builds `window.shell` (quit, clipboard, subtitle fetch, screensaver,
+// window blur) plus `shell.mpv` for the embedded libmpv player. The UI awaits
 // `window.shellReady` before booting.
 (function () {
   'use strict';

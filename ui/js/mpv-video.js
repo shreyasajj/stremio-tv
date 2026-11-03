@@ -1,6 +1,6 @@
 // HTMLMediaElement-shaped facade over the native shell's embedded libmpv
-// (window.shell.mpv), so the player overlay drives <video> under Electron and
-// mpv under the native Qt shell with the same code.
+// (window.shell.mpv), so the player overlay drives mpv with the same code it
+// uses for a <video> element (the browser-based UI tests).
 //
 // mpv draws underneath the page; while this exists the page is transparent.
 

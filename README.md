@@ -21,7 +21,7 @@ remote: arrow keys, OK, and Back are all you need.
 
 ## Features
 
-- **Always fullscreen** — Electron kiosk window; if the compositor drops fullscreen it re-enters it.
+- **Always fullscreen** — a kiosk-style window; if the compositor drops fullscreen it re-enters it.
 - **100% arrow-key navigable** — a spatial-navigation engine drives every screen; nothing needs a pointer.
 - **Nav rail** — press **Left** from anywhere to reach Search / Home / Discover / Library / Add-ons / Settings.
 - **Full addon support** — install any addon by manifest URL (AIOStreams, Torrentio, Cinemeta, …) or
@@ -41,36 +41,21 @@ remote: arrow keys, OK, and Back are all you need.
   the keyboard's Paste key — handy for long AIOStreams URLs.
 - **Series support** — season picker, episode list, auto "next episode" (binge groups auto-pick the same source).
 
-## Native build (Qt + libmpv) — recommended
+## Install
 
-There are two shells around the same UI:
-
-- **Native (`native/`)**: a Qt 6 Wayland window with embedded **libmpv** playback.
-  Plays HEVC/AV1/MKV, switches audio tracks for real, and can pass Dolby/DTS
-  through to a soundbar. Install the Flatpak from the
-  [Releases page](https://github.com/shreyasajj/stremio-tv/releases), or see
-  [native/README.md](native/README.md) to build from source.
-- **Electron (repo root)**: the original shell, below. It uses Chromium's media stack.
-
-## Requirements on the box
-
-- Linux with Plasma Bigscreen (or any desktop — the app is just fullscreen)
-- Node.js ≥ 18 and npm
-- Network access to your addons
-
-## Install on your streaming box
+Stremio TV is a native Qt 6 app with embedded **libmpv** playback. Download the Flatpak
+for your box from the [Releases page](https://github.com/shreyasajj/stremio-tv/releases)
+(`x86_64` for most mini PCs, `aarch64` for ARM boards), then:
 
 ```bash
-git clone <this repo> ~/stremio-tv
-cd ~/stremio-tv
-bash packaging/install.sh
+flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+flatpak install --user ./stremio-tv-x86_64.flatpak
+flatpak run io.github.shreyasajj.StremioTV
 ```
 
-That installs dependencies, creates a `stremio-tv` launcher in `~/.local/bin`, and adds a
-**Stremio TV** entry to the app launcher (`X-KDE-BigScreen=true`, so Plasma Bigscreen
-shows it as a tile). Start it from the launcher or run `stremio-tv`.
-
-To run without installing: `npm install && npm start`.
+It shows up in the app launcher as **Stremio TV** (a tile in Plasma Bigscreen). Runs on
+Linux with Plasma Bigscreen or any Wayland/X11 desktop; the app is always fullscreen.
+To build from source, see [native/README.md](native/README.md).
 
 ## First start & AIOStreams
 
@@ -105,7 +90,6 @@ regular keyboard keys, which is all the app listens for.
   hidden), the video pauses immediately — no decoding, no stream downloading, no audio
   behind whatever is now on screen. It stays paused when you come back; press **OK** to
   resume from the paused overlay.
-- **Background throttling** is enabled, so a hidden Stremio TV window costs almost no CPU.
 - **The screen stays awake only while playing.** A power-save blocker is held during
   playback and released the moment you pause or stop, so the box can blank/sleep normally
   otherwise.
@@ -127,22 +111,35 @@ debrid) do you need Stremio's streaming server running somewhere, with its URL s
 
 ## Codec notes
 
-Playback uses Chromium's media stack: H.264/AAC/VP9/AV1/Opus/Vorbis work out of the box,
-HLS via hls.js. **HEVC** plays only where the box has hardware decoding Chromium can use
-(VAAPI flags are enabled). With AIOStreams you can filter for H.264 sources if your box
-lacks HEVC decode. Multi-audio-track switching is supported for HLS streams; single-file
-MKV audio switching is limited by Chromium.
+Playback goes through libmpv/FFmpeg: H.264, HEVC, AV1, VP9 and the rest, in MKV, MP4,
+HLS or DASH, with VAAPI hardware decoding where the box supports it. Audio track
+switching works in single-file MKVs, and **Settings → Surround passthrough** can send
+Dolby/DTS untouched to a TV or soundbar.
 
 ## Development & tests
 
+The UI is plain HTML/CSS/JS in `ui/`; the native shell (`native/`) hosts it in a Qt
+WebEngine view over libmpv. A source build loads `ui/` directly, so UI edits only need an
+app restart (see [native/README.md](native/README.md)).
+
 ```bash
-npm run serve        # serve the UI at http://127.0.0.1:8099/ui/index.html
-npm run mock-addon   # local offline test addon on http://127.0.0.1:7010
-npm run test:addons  # live addon-protocol smoke test against Cinemeta (needs internet)
-npm run test:ui      # headless end-to-end test: drives the UI with arrow keys (SHOTS=1 for screenshots)
+npm ci                    # test tooling (playwright-core)
+npm run serve             # serve the UI at http://127.0.0.1:8099/ui/index.html
+npm run mock-addon        # local offline test addon on http://127.0.0.1:7010
+npm run test:addons       # live addon-protocol smoke test against Cinemeta (needs internet)
+npm run test:ui           # headless Chromium drives the UI with arrow keys (SHOTS=1 for screenshots)
+npm run test:native-flow  # player flow against a simulated native shell
 ```
 
-Project layout: `main.js`/`preload.js` are the Electron shell; everything else lives in
-`ui/` — `js/nav.js` (spatial navigation), `js/addons.js` (addon protocol client),
-`js/player.js` (player + overlay), `js/screens/*` (screens), `js/stremio-api.js`
-(account login/addon import).
+The UI tests need a Chromium binary (`CHROMIUM_PATH`). The end-to-end test of the real
+app (Qt, libmpv, Wayland, PulseAudio) runs in Docker:
+
+```bash
+docker build -t stremio-tv-native-dev native/dev
+docker run --rm -v "$PWD":/src -w /src -e SHOTS=1 stremio-tv-native-dev sh native/dev/run-tests.sh
+```
+
+Project layout: `native/` is the Qt shell; `ui/` holds `js/nav.js` (spatial navigation),
+`js/addons.js` (addon protocol client), `js/player.js` (player + overlay),
+`js/mpv-video.js` (libmpv as a `<video>`-like element), `js/screens/*` (screens) and
+`js/stremio-api.js` (account login/addon import).

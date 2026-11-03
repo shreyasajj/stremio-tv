@@ -24,7 +24,7 @@ qt_add_qml_module(stremio-tv-native
         shellbridge.cpp shellbridge.h
 )
 
-# The shared web UI lives one directory up (also used by the Electron shell).
+# The web UI lives one directory up.
 get_filename_component(STREMIO_TV_UI_SRC "${CMAKE_CURRENT_SOURCE_DIR}/../ui" ABSOLUTE)
 target_compile_definitions(stremio-tv-native PRIVATE
     STREMIO_TV_APP_ID="${STREMIO_TV_APP_ID}"
