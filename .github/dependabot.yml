@@ -1,5 +1,5 @@
-# Weekly dependency updates against main. Minor/patch bumps are auto-merged
-# by .github/workflows/dependabot-automerge.yml once CI passes.
+# Weekly dependency updates against main. Every update, major bumps included,
+# is auto-merged by .github/workflows/dependabot-automerge.yml once CI passes.
 version: 2
 updates:
   - package-ecosystem: npm
