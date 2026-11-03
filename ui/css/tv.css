@@ -435,19 +435,51 @@ button.list-item:focus .kv-label { color: rgba(10, 11, 16, .68); }
   overflow: hidden;
 }
 .hero-content .btn-row { margin: var(--sp-5) 0 0; }
+/* Past the first row the hero gives way to the rows */
+.home-screen.browsing .hero-content,
+.home-screen.browsing .hero-backdrop { opacity: 0; }
+/* Full height so rows can slide up over the hero; the first row starts below
+   it (top padding) and later rows pin to the TV-safe top edge. */
 .home-rows {
   position: absolute;
-  left: 0; right: 0;
-  top: 52vh;
-  bottom: 0;
-  padding: 0 var(--safe-x) var(--safe-y) var(--content-left);
+  inset: 0;
+  padding: 52vh var(--safe-x) var(--safe-y) var(--content-left);
+  scroll-padding-top: var(--safe-y);
   overflow-y: auto;
   overflow-x: hidden;
   scroll-behavior: smooth;
   scrollbar-width: none;
+  pointer-events: none; /* the hero's buttons sit under the top padding */
+  /* poster size that fits three rows (title + padding ≈ 119px each) */
+  --poster-w: calc(((100vh - var(--safe-y)) / 3 - 119px) * 2 / 3);
 }
+.home-rows > * { pointer-events: auto; }
 .home-rows::-webkit-scrollbar { display: none; }
+.home-rows .meta-row { padding-bottom: 48px; }
 .home-rows .empty-note { padding-top: var(--sp-2); }
+
+/* "Next episode S2 E5 · Friday" (hero, detail) and its Continue Watching badge */
+.next-episode {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text);
+}
+.next-episode .ico { font-size: 22px; color: var(--accent); }
+.next-episode span { color: var(--text-dim); font-weight: 500; }
+.card-badge {
+  position: absolute;
+  top: var(--sp-3);
+  left: var(--sp-3);
+  padding: 4px var(--sp-3);
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  font-size: 16px;
+  font-weight: 650;
+}
 
 /* ---- Detail (title page) ---- */
 .detail-screen { padding-bottom: var(--safe-y); }

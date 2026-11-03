@@ -1,7 +1,7 @@
 // Small DOM helpers, toasts and modal management shared by all screens.
 
 import { Nav } from './nav.js';
-import { backdropUrl, lazyBackground, logoUrl, metaFacts } from './art.js';
+import { backdropUrl, lazyBackground, logoUrl, metaFacts, nextEpisodeText } from './art.js';
 import { icon } from './icons.js';
 
 export function el(tag, attrs = {}, ...children) {
@@ -165,6 +165,12 @@ export function factsRow(meta, { chips = false, cls = '' } = {}) {
   return el('div', { class: `facts ${cls}`.trim() },
     metaFacts(meta).map((f) => el('span', { class: `${chips ? 'chip' : 'fact'}${f.kind ? ' ' + f.kind : ''}` },
       f.kind === 'rating' ? icon('star') : null, f.text)));
+}
+
+// "Next episode S2 E5 · Friday, Nov 6" for series with one scheduled, else null.
+export function nextEpisodeLine(meta) {
+  const text = nextEpisodeText(meta);
+  return text ? el('div', { class: 'next-episode' }, icon('calendar'), el('span', { text: 'Next episode' }), text) : null;
 }
 
 export function formatTime(seconds) {

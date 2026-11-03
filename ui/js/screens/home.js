@@ -1,16 +1,19 @@
 // Home: a full-bleed hero for the focused title above Continue Watching + one
-// row per browsable addon catalog. The hero follows focus along the rows
-// (debounced, crossfaded); its Play/Details buttons sit one press Up.
+// row per browsable addon catalog, then a few genre rows. The hero follows
+// focus along the first row (debounced, crossfaded); its Play/Details buttons
+// sit one press Up. Past the first row the hero fades out and the rows slide
+// up so three of them fill the screen.
 
-import { el, metaCard, toast, titleArt, factsRow } from '../ui.js';
+import { el, metaCard, toast, titleArt, factsRow, nextEpisodeLine } from '../ui.js';
 import { Storage } from '../storage.js';
-import { browsableCatalogs, getCatalog } from '../addons.js';
+import { browsableCatalogs, getCatalog, catalogRequiredExtra, catalogSupportsExtra, genreOptions } from '../addons.js';
 import { playFlow, resumeFlow } from '../streams.js';
 import { Nav } from '../nav.js';
 import { icon, iconSvg } from '../icons.js';
-import { backdropUrl, logoUrl, cachedMeta, preload, imdbId } from '../art.js';
+import { backdropUrl, logoUrl, cachedMeta, preload, imdbId, nextEpisodeText } from '../art.js';
 
-const ROW_LIMIT = 8; // rows on home; full browsing lives in Discover
+const ROW_LIMIT = 8; // catalog rows on home; full browsing lives in Discover
+const GENRE_ROWS = ['Drama', 'Comedy', 'Action', 'Thriller', 'Sci-Fi']; // when the catalog offers them
 const HERO_DEBOUNCE_MS = 250;
 const FADE_MS = 180;
 const LOGO_WAIT_MS = 800;
@@ -47,7 +50,7 @@ export async function render({ router }) {
 
   function fillText(meta, { logoLoaded } = {}) {
     artSlot.replaceChildren(titleArt(meta, { logoLoaded }));
-    factsSlot.replaceChildren(factsRow(meta));
+    factsSlot.replaceChildren(factsRow(meta), nextEpisodeLine(meta) || '');
     desc.textContent = meta.description || '';
     heroContent.dataset.id = meta.id;
   }
@@ -88,7 +91,8 @@ export async function render({ router }) {
 
     // Catalog items are often thin (no synopsis, runtime or backdrop):
     // fill those in from the full meta without another fade.
-    if (meta.description && meta.background && meta.runtime) return;
+    // Series also need their episode list for the next-episode line.
+    if (meta.description && meta.background && meta.runtime && (hero.type !== 'series' || meta.videos)) return;
     const full = await cachedMeta(hero.type, meta.id);
     if (!full || seq !== hero.seq) return;
     const merged = { ...meta, ...full, type: hero.type };
@@ -101,7 +105,13 @@ export async function render({ router }) {
 
   rows.addEventListener('focusin', (e) => {
     const card = e.target.closest?.('.meta-card');
-    if (!card || card === hero.pending) return;
+    if (!card) return;
+    // Below the first row: hide the hero (and keep its buttons out of reach)
+    // so the rows get the whole screen. The hero only describes row one.
+    const browsing = card.closest('.row-section') !== rows.querySelector('.row-section');
+    root.classList.toggle('browsing', browsing);
+    heroContent.inert = browsing;
+    if (browsing || card === hero.pending) return;
     hero.pending = card;
     clearTimeout(hero.timer);
     if (!hero.card) showHero(card); // first fill: no wait
@@ -167,11 +177,14 @@ export async function render({ router }) {
       });
       card._type = entry.type;
       // Saved progress only keeps the poster; non-IMDb titles get their
-      // backdrop from the full meta.
-      if (!imdbId(entry)) {
+      // backdrop from the full meta, series their next episode's date.
+      if (!imdbId(entry) || entry.type === 'series') {
         cachedMeta(entry.type, entry.id).then((m) => {
-          if (!m?.background) return;
+          if (!m) return;
           const art = card.querySelector('.poster');
+          const next = entry.type === 'series' && nextEpisodeText(m);
+          if (next) art.append(el('div', { class: 'card-badge', text: next }));
+          if (imdbId(entry) || !m.background) return;
           art.dataset.bg = m.background;
           if (art.style.backgroundImage) art.style.backgroundImage = `url("${m.background}")`;
         });
@@ -181,18 +194,37 @@ export async function render({ router }) {
     rows.append(section(el('h2', { class: 'row-title', text: 'Continue Watching' }), row));
   }
 
-  const catalogs = browsableCatalogs().slice(0, ROW_LIMIT);
-  if (!catalogs.length && !cw.length) {
+  // Catalogs that need a genre (Cinemeta's "New" by year) open on their
+  // first option, the newest year.
+  const specs = [];
+  for (const { addon, catalog } of browsableCatalogs()) {
+    const needsGenre = catalogRequiredExtra(catalog).includes('genre');
+    const genre = needsGenre ? genreOptions(catalog)[0] : undefined;
+    if (needsGenre && !genre) continue;
+    specs.push({ addon, catalog, genre, title: catalog.name || catalog.id,
+      sub: [catalog.type, genre, addon.manifest.name].filter(Boolean).join(' · ') });
+  }
+  specs.splice(ROW_LIMIT);
+  // Genre rows come from the first movie catalog that can filter by genre.
+  const byGenre = browsableCatalogs().find(({ catalog }) => catalog.type === 'movie'
+    && catalogSupportsExtra(catalog, 'genre') && !catalogRequiredExtra(catalog).length);
+  if (byGenre) {
+    const offered = genreOptions(byGenre.catalog);
+    for (const genre of GENRE_ROWS.filter((g) => offered.includes(g))) {
+      specs.push({ ...byGenre, genre, title: genre, sub: `${byGenre.catalog.type} · ${byGenre.addon.manifest.name}` });
+    }
+  }
+
+  if (!specs.length && !cw.length) {
     rows.append(el('div', { class: 'empty-note', text: 'No catalogs yet. Go to Add-ons (left menu) and install Cinemeta or your AIOStreams addon.' }));
   }
 
-  for (const { addon, catalog } of catalogs) {
-    const title = el('h2', { class: 'row-title', text: catalog.name || catalog.id },
-      el('span', { class: 'row-sub', text: `${catalog.type} · ${addon.manifest.name}` }));
+  for (const { addon, catalog, genre, title: name, sub } of specs) {
+    const title = el('h2', { class: 'row-title', text: name }, el('span', { class: 'row-sub', text: sub }));
     const row = el('div', { class: 'meta-row' }, el('div', { class: 'empty-note', text: 'Loading…' }));
     const sec = section(title, row);
     rows.append(sec);
-    getCatalog(addon, catalog.type, catalog.id)
+    getCatalog(addon, catalog.type, catalog.id, { genre })
       .then((metas) => {
         row.innerHTML = '';
         if (!metas.length) { sec.remove(); return; }

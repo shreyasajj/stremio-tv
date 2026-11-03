@@ -28,7 +28,7 @@ function isVisible(el) {
   const r = el.getBoundingClientRect();
   if (r.width === 0 && r.height === 0) return false;
   // display:none ancestors yield a zero rect, checked above; also honor .hidden
-  if (el.closest('.hidden')) return false;
+  if (el.closest('.hidden, [inert]')) return false;
   return true;
 }
 
@@ -70,11 +70,16 @@ function move(dir) {
     focus(preferredIn(scope) || all[0]);
     return true;
   }
+  // data-nav-stop="left up …" makes a container an edge: those keys stay
+  // inside it. The nav rail uses it, or Left would reach cards scrolled off
+  // behind it and Up/Down would drop into the content.
+  const stop = cur.closest('[data-nav-stop]');
+  const inside = stop && stop.dataset.navStop.split(/\s+/).includes(dir) ? stop : null;
   const from = rectOf(cur);
   let best = null;
   let bestScore = Infinity;
   for (const el of all) {
-    if (el === cur) continue;
+    if (el === cur || (inside && !inside.contains(el))) continue;
     const s = score(from, rectOf(el), dir);
     if (s < bestScore) { bestScore = s; best = el; }
   }
@@ -144,7 +149,12 @@ function scrollIntoViewNicely(el) {
     if (canScroll && (pinStart || p.classList.contains('screen') || p.classList.contains('modal-body') || p === row?.parentElement)) {
       let target;
       if (pinStart) {
-        target = offsetTopWithin(el.closest('.row-section') || el, p);
+        // The first section keeps its laid-out place (Home: under the hero);
+        // later ones pin to the container's scroll-padding-top.
+        const sec = el.closest('.row-section') || el;
+        target = sec.previousElementSibling
+          ? offsetTopWithin(sec, p) - (parseFloat(getComputedStyle(p).scrollPaddingTop) || 0)
+          : 0;
       } else {
         const elTop = offsetTopWithin(el, p);
         target = elTop - (p.clientHeight - el.offsetHeight) / 2;
