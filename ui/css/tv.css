@@ -205,8 +205,8 @@ h2.row-title .row-sub { color: var(--text-faint); font-weight: 500; font-size: 1
   padding: var(--sp-5) var(--safe-x) 60px var(--content-left);
   margin: 0 calc(-1 * var(--safe-x)) 0 calc(-1 * var(--content-left));
   /* cards scrolled past the content edge would show behind the nav rail;
-     the 20px margin keeps the first card's focus ring + scale visible */
-  clip-path: inset(0 0 0 calc(var(--content-left) - 20px));
+     the 30px margin keeps the first card's focus ring + scale visible */
+  clip-path: inset(0 0 0 calc(var(--content-left) - 30px));
   scroll-behavior: smooth;
   scrollbar-width: none;
 }
@@ -236,9 +236,13 @@ h2.row-title .row-sub { color: var(--text-faint); font-weight: 500; font-size: 1
   display: flex;
   align-items: flex-end;
 }
-/* Card focus is instant on purpose: animating the zoom or the ring here made
-   Qt WebEngine's renderer crash intermittently (software GL, while the page's
-   GPU context was being set up). Other transitions are unaffected. */
+/* Card focus only animates once the page has settled (html.motion, set a few
+   seconds after start): animating the zoom or the ring while Qt WebEngine set
+   up the page's GPU context made its renderer crash intermittently (software
+   GL). Until then focus is instant. */
+.motion .meta-card .poster { transition: transform .24s var(--ease); }
+.motion .meta-card .poster::after { transition: opacity .2s var(--ease); }
+.motion .meta-card > .card-name { transition: opacity .2s var(--ease), transform .2s var(--ease); }
 .meta-card .poster::after {
   content: "";
   position: absolute;
@@ -249,7 +253,7 @@ h2.row-title .row-sub { color: var(--text-faint); font-weight: 500; font-size: 1
   opacity: 0;
   pointer-events: none;
 }
-.meta-card:focus .poster { transform: scale(1.08); }
+.meta-card:focus .poster { transform: scale(1.14); }
 .meta-card:focus .poster::after { opacity: 1; }
 .meta-card .poster .fallback-name {
   width: 100%;
@@ -263,7 +267,7 @@ h2.row-title .row-sub { color: var(--text-faint); font-weight: 500; font-size: 1
 .meta-card > .card-name {
   position: absolute;
   left: 0; right: 0;
-  top: calc(100% + 20px);
+  top: calc(100% + 26px);
   font-size: 19px;
   font-weight: 600;
   text-align: center;
@@ -288,7 +292,7 @@ h2.row-title .row-sub { color: var(--text-faint); font-weight: 500; font-size: 1
 /* Wide 16:9 backdrop cards (Continue Watching) */
 .meta-card.wide { width: var(--wide-w); }
 .meta-card.wide .poster { aspect-ratio: 16 / 9; }
-.meta-card.wide:focus .poster { transform: scale(1.06); }
+.meta-card.wide:focus .poster { transform: scale(1.09); }
 .card-shade {
   position: absolute;
   inset: 0;
@@ -359,7 +363,12 @@ button.list-item:focus .li-sub,
 button.list-item:focus .kv-label { color: rgba(10, 11, 16, .68); }
 
 /* ---- Home: fixed hero (focused title) above rows that slide under it ---- */
-.home-screen { padding: 0; overflow: hidden; }
+.home-screen {
+  padding: 0;
+  overflow: hidden;
+  /* the screen is three lanes of rows, under the TV-safe top margin */
+  --lane: calc((100vh - var(--safe-y)) / 3);
+}
 .hero-backdrop {
   position: absolute;
   top: 0; right: 0;
@@ -380,7 +389,8 @@ button.list-item:focus .kv-label { color: rgba(10, 11, 16, .68); }
 .hero-content {
   position: absolute;
   left: var(--content-left);
-  top: calc(var(--safe-y) + var(--sp-3));
+  /* just above the first row, which sits in the bottom lane */
+  bottom: calc(var(--lane) + var(--sp-5));
   width: 46%;
   transition: opacity .18s var(--ease);
 }
@@ -435,28 +445,94 @@ button.list-item:focus .kv-label { color: rgba(10, 11, 16, .68); }
   overflow: hidden;
 }
 .hero-content .btn-row { margin: var(--sp-5) 0 0; }
+/* The hero's trailer plays over the backdrop, under the scrim */
+.hero-trailer {
+  position: absolute;
+  top: 0; right: 0;
+  width: 76%;
+  height: 84%;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity .6s var(--ease);
+}
+.hero-trailer.on { opacity: 1; }
+/* cover the box, cropped past YouTube's title bar and logo */
+.hero-trailer .trailer-frame {
+  width: calc(84vh * 16 / 9 * 1.2);
+  height: calc(84vh * 1.2);
+}
 /* Past the first row the hero gives way to the rows */
 .home-screen.browsing .hero-content,
-.home-screen.browsing .hero-backdrop { opacity: 0; }
-/* Full height so rows can slide up over the hero; the first row starts below
-   it (top padding) and later rows pin to the TV-safe top edge. */
+.home-screen.browsing .hero-backdrop,
+.home-screen.browsing .hero-trailer { opacity: 0; }
+/* The screen is three lanes, one row each. Full height so rows can slide up
+   over the hero: the first row starts in the bottom lane (top padding) and
+   the focused row of the others in the middle one (scroll-padding-top; the
+   bottom padding lets the last row get there too). */
 .home-rows {
   position: absolute;
   inset: 0;
-  padding: 52vh var(--safe-x) var(--safe-y) var(--content-left);
-  scroll-padding-top: var(--safe-y);
+  padding: calc(var(--safe-y) + 2 * var(--lane)) var(--safe-x) var(--lane) var(--content-left);
+  scroll-padding-top: calc(var(--safe-y) + var(--lane));
   overflow-y: auto;
   overflow-x: hidden;
   scroll-behavior: smooth;
   scrollbar-width: none;
   pointer-events: none; /* the hero's buttons sit under the top padding */
-  /* poster size that fits three rows (title + padding ≈ 119px each) */
-  --poster-w: calc(((100vh - var(--safe-y)) / 3 - 119px) * 2 / 3);
+  /* card sizes that make each row one lane (title + padding ≈ 119px) */
+  --poster-w: calc((var(--lane) - 119px) * 2 / 3);
+  --wide-w: calc((var(--lane) - 119px) * 16 / 9);
 }
 .home-rows > * { pointer-events: auto; }
 .home-rows::-webkit-scrollbar { display: none; }
 .home-rows .meta-row { padding-bottom: 48px; }
 .home-rows .empty-note { padding-top: var(--sp-2); }
+
+/* ---- Trailer previews ---- */
+.trailer-frame {
+  position: absolute;
+  left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  border: 0;
+  pointer-events: none;
+}
+/* Full screen (rows past Home's first, Discover): above the rail and
+   screens, below dialogs (z 60+) and the player */
+.trailer-stage {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  overflow: hidden;
+  background: #000;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity .6s var(--ease), visibility 0s .6s;
+}
+.trailer-stage.on { opacity: 1; visibility: visible; transition: opacity .6s var(--ease); }
+.trailer-stage .trailer-frame { width: 120vw; height: calc(120vw * 9 / 16); }
+.trailer-scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(var(--bg-rgb), .85) 0%, rgba(var(--bg-rgb), .45) 32%, rgba(var(--bg-rgb), 0) 55%),
+    linear-gradient(0deg, rgba(var(--bg-rgb), .9) 0%, rgba(var(--bg-rgb), 0) 45%);
+}
+.trailer-info {
+  position: absolute;
+  left: var(--content-left);
+  bottom: calc(var(--safe-y) + var(--sp-6));
+  width: 44%;
+}
+.trailer-desc {
+  margin-top: var(--sp-3);
+  font-size: 21px;
+  line-height: 1.5;
+  color: #c9ccd8;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 
 /* "Next episode S2 E5 · Friday" (hero, detail) and its Continue Watching badge */
 .next-episode {

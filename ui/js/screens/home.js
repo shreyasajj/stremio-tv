@@ -1,8 +1,10 @@
 // Home: a full-bleed hero for the focused title above Continue Watching + one
-// row per browsable addon catalog, then a few genre rows. The hero follows
-// focus along the first row (debounced, crossfaded); its Play/Details buttons
-// sit one press Up. Past the first row the hero fades out and the rows slide
-// up so three of them fill the screen.
+// row per browsable addon catalog, then a few genre rows. The screen is three
+// lanes of rows. The hero fills the top two while focus is on the first row
+// (which sits in the bottom lane); it follows focus along that row (debounced,
+// crossfaded) and its Play/Details buttons sit one press Up. Past the first
+// row the hero fades out and the focused row slides to the middle lane.
+// Resting on a title plays its trailer: in the hero, or full screen.
 
 import { el, metaCard, toast, titleArt, factsRow, nextEpisodeLine } from '../ui.js';
 import { Storage } from '../storage.js';
@@ -11,6 +13,7 @@ import { playFlow, resumeFlow } from '../streams.js';
 import { Nav } from '../nav.js';
 import { icon, iconSvg } from '../icons.js';
 import { backdropUrl, logoUrl, cachedMeta, preload, imdbId, nextEpisodeText } from '../art.js';
+import { trailerPreviews } from '../trailer.js';
 
 const ROW_LIMIT = 8; // catalog rows on home; full browsing lives in Discover
 const GENRE_ROWS = ['Drama', 'Comedy', 'Action', 'Thriller', 'Sci-Fi']; // when the catalog offers them
@@ -34,8 +37,10 @@ export async function render({ router }) {
   const detailsBtn = el('button', { class: 'focusable btn hero-details' }, icon('info'), 'Details');
   const heroContent = el('div', { class: 'hero-content hidden' },
     artSlot, factsSlot, desc, el('div', { class: 'btn-row' }, playBtn, detailsBtn));
-  const rows = el('div', { class: 'home-rows', 'data-scroll': 'start' });
-  root.append(...backdrops, el('div', { class: 'hero-scrim' }), heroContent, rows);
+  const trailer = el('div', { class: 'hero-trailer' });
+  // Down on the last row stays there rather than dropping onto the rail.
+  const rows = el('div', { class: 'home-rows', 'data-scroll': 'start', 'data-nav-stop': 'down' });
+  root.append(...backdrops, trailer, el('div', { class: 'hero-scrim' }), heroContent, rows);
 
   // card: the row card the hero describes; seq drops stale async updates.
   const hero = { card: null, pending: null, timer: null, seq: 0, front: 0, meta: null, type: null, entry: null };
@@ -149,6 +154,14 @@ export async function render({ router }) {
     return true;
   }
   Nav.pushKeyHandler(heroKeys);
+
+  // In the hero while it shows the card; it keeps playing on the hero's
+  // buttons. Full screen for cards below the first row.
+  trailerPreviews(root, {
+    inline: (card) => (!root.classList.contains('browsing') && hero.card === card
+      ? { host: trailer, keeps: (t) => t === card || heroContent.contains(t) }
+      : null),
+  });
 
   // ---- rows ----
   function section(title, row) {

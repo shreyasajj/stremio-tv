@@ -27,6 +27,7 @@ export const DEFAULT_SETTINGS = {
   streamingServer: '',     // e.g. http://127.0.0.1:11470 — enables torrent (infoHash) streams
   subtitleSize: 100,       // percent
   subtitleLang: 'eng',
+  trailerPreviews: 'sound', // resting on a title plays its trailer: sound | muted | off
   // Native (libmpv) shell only:
   audioDevice: 'auto',     // mpv audio-device, e.g. alsa/hdmi:CARD=PCH,DEV=0
   audioPassthrough: '',    // mpv audio-spdif codec list; '' = decode to PCM

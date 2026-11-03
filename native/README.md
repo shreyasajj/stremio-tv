@@ -20,6 +20,7 @@ browser-based UI tests.
 | `mpvitem.*` | `MpvVideo` QML item: OpenGL render of the mpv frames |
 | `shellbridge.*` | `window.shell`: subtitle fetch, clipboard, quit, screensaver inhibit |
 | `homeassistant.*` | `shell.homeAssistant`: MQTT link to Home Assistant (libmosquitto), discovery, last will, commands |
+| `embedreferrer.*` | names the app to YouTube's embedded player (trailer previews), which refuses to play for a `file://` page |
 | `phonesetup.*` | the "Set up with phone" page on the LAN, its QR code and the mDNS lookup of Home Assistant |
 | `third_party/qrcodegen` | Nayuki's QR Code generator (MIT) |
 | `bridge.js` | injected into the page; builds `window.shell` over QWebChannel |

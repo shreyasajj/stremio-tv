@@ -25,6 +25,8 @@ const MOVIES = Array.from({ length: 14 }, (_, i) => ({
   releaseInfo: String(2000 + i),
   imdbRating: (5 + (i % 5)).toFixed(1),
   genres: ['Test', i % 2 ? 'Drama' : 'Action'],
+  // the first can't be embedded (the UI test's fake YouTube errors on it)
+  trailers: [{ source: `mockBroken${i + 1}`, type: 'Trailer' }, { source: `mockTrailer${i + 1}`, type: 'Trailer' }],
 }));
 
 const SERIES = [{

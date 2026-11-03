@@ -29,6 +29,16 @@ export function backdropUrl(meta) {
   return null;
 }
 
+// YouTube ids of the title's trailers, best first (Cinemeta lists them twice:
+// `trailerStreams` and the older `trailers`).
+export function trailerIds(meta) {
+  const ids = [
+    ...(meta?.trailerStreams || []).map((t) => t.ytId),
+    ...(meta?.trailers || []).filter((t) => !t.type || t.type === 'Trailer').map((t) => t.source),
+  ];
+  return [...new Set(ids.filter((id) => typeof id === 'string' && /^[\w-]{6,20}$/.test(id)))];
+}
+
 // "2019 · 2h 10m · ★ 7.8 · Drama, Crime" as separate pieces.
 export function metaFacts(meta, { genres = 3 } = {}) {
   const facts = [];

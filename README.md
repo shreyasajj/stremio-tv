@@ -31,6 +31,12 @@ remote: arrow keys, OK, and Back are all you need.
   - **Left/Right** → seek −10s/+10s; repeated presses accelerate to 30s/60s/120s steps
   - **Up/Down** → show the control row (Pause · Subtitles · Audio · Speed · Next episode)
   - **Back** → hide controls / stop playback (progress is saved)
+- **Home in three lanes** — the focused row slides to the middle of the screen with the one above
+  still in view; on the first row (Continue Watching) the title card is back above it. Focused
+  posters grow with a short animation, on Home and Discover alike.
+- **Trailer previews** — rest on a title for a few seconds and its trailer plays: in the title
+  card on Home's first row, or full screen elsewhere on Home and in Discover (any key returns).
+  With sound, muted or off in **Settings → Trailer previews**.
 - **Continue Watching** — progress is stored locally; resume from Home, Library, or the title page.
 - **Subtitles** — embedded tracks plus subtitle addons (e.g. OpenSubtitles), with adjustable size.
 - **Search built for the remote** — the on-screen keyboard sits next to a **Top matches** list
