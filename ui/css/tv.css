@@ -24,6 +24,8 @@
   --accent: #7c5cff;
   --accent-glow: rgba(124, 92, 255, .5);
   --danger: #ef5b5b;
+  --ok: #4fd08a;
+  --ok-on-focus: #13804a;
 
   /* spacing scale */
   --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
@@ -863,3 +865,41 @@ html.native-video-playing #screens { visibility: hidden; }
 .addon-line .grow { flex: 1; min-width: 0; }
 .addon-line .li-sub { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: normal; }
 .addon-line .btn { height: 52px; padding: 0 var(--sp-5); font-size: 20px; }
+
+/* Settings → Home Assistant */
+.screen-intro { max-width: 1240px; color: var(--text-dim); font-size: 21px; margin: calc(-1 * var(--sp-4)) 0 var(--sp-6); }
+.toggle-pill {
+  flex: none;
+  min-width: 76px;
+  padding: 6px var(--sp-4);
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font-size: 19px;
+  font-weight: 700;
+  text-align: center;
+}
+.toggle-pill.on { background: var(--accent); color: var(--text); }
+.setting-item:focus .toggle-pill:not(.on) { background: rgba(10, 11, 16, .12); color: var(--on-focus); }
+.list-item .li-sub.ok { color: var(--ok); }
+.list-item .li-sub.error { color: var(--danger); }
+button.list-item:focus .li-sub.ok { color: var(--ok-on-focus); }
+button.list-item:focus .li-sub.error { color: #b8262f; }
+.ha-setup { max-width: 1100px; }
+.ha-setup-body { display: flex; gap: var(--sp-6); align-items: flex-start; }
+.ha-qr {
+  flex: none;
+  width: 300px; height: 300px;
+  border-radius: var(--r-md);
+  background: #fff;
+  image-rendering: pixelated;
+}
+.ha-setup-text { min-width: 0; max-width: 560px; }
+.ha-steps { padding-left: 1.2em; font-size: 21px; color: var(--text-dim); }
+.ha-steps li { margin-bottom: var(--sp-2); }
+.ha-setup-url { margin-top: var(--sp-1); color: var(--text); font-size: 22px; font-weight: 650; word-break: break-all; }
+.ha-setup-state { margin-top: var(--sp-5); font-size: 24px; font-weight: 700; }
+.ha-setup-state.ok { color: var(--ok); }
+.ha-setup-state.error { color: var(--danger); }
+.ha-setup-note { margin-top: var(--sp-3); font-size: 18px; color: var(--text-faint); }
+.ha-setup .btn-row { margin-bottom: 0; }

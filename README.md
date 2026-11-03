@@ -40,6 +40,7 @@ remote: arrow keys, OK, and Back are all you need.
   to land in Search with it typed; **Backspace deletes**, and you can **paste** with Ctrl+V or
   the keyboard's Paste key — handy for long AIOStreams URLs.
 - **Series support** — season picker, episode list, auto "next episode" (binge groups auto-pick the same source).
+- **Home Assistant** — optional: shows what is playing in Home Assistant and lets it pause, play or stop (see below).
 
 ## Install
 
@@ -116,6 +117,66 @@ HLS or DASH, with VAAPI hardware decoding where the box supports it. Audio track
 switching works in single-file MKVs, and **Settings → Surround passthrough** can send
 Dolby/DTS untouched to a TV or soundbar.
 
+## Home Assistant
+
+Stremio TV can tell Home Assistant what is playing and take play/pause/stop from it, over
+MQTT with HA's **MQTT Discovery**: a **Stremio TV** device appears in HA on its own, no
+custom integration needed. It needs an MQTT broker; most HA setups already have one (the
+**Mosquitto broker** add-on). It is **off by default**; when on, it sends what you watch to
+your own broker on your network, and nowhere else.
+
+**Set it up** in **Settings → Home Assistant**, either way:
+
+- **Set up with phone** — the TV shows a QR code (and the same link as text). Scan it, and a
+  small form opens on your phone: enter the broker address, port (`1883`), username and
+  password. The address is pre-filled with your HA host when the TV finds it on the network.
+  The TV connects and shows *Connected* or the broker's error on both screens. The page only
+  exists while that TV screen is open, needs the one-time code in the link, works on your
+  home network only, and closes after 5 minutes or once connected.
+- **Enter manually** — type the same four fields with the on-screen keyboard (the Paste key
+  and a physical keyboard work too).
+
+Both end in a connection test, and each field can be changed on its own later, as can the
+**box name** (default `living_room`, used in the topics). A dedicated broker login (e.g. a
+`stremio-tv` user; with the Mosquitto add-on, a non-admin HA user) is easiest to revoke.
+
+**What shows up in HA:**
+
+| Entity | What |
+| --- | --- |
+| `sensor.stremio_tv_state` | `playing` / `paused` / `idle`; unavailable when the app is not running |
+| `sensor.stremio_tv_title` | movie or series name; attributes `episode` (e.g. S01E02), `type`, `imdb_id` |
+| `sensor.stremio_tv_position`, `sensor.stremio_tv_duration` | seconds |
+| `sensor.stremio_tv_progress` | % watched |
+| `image.stremio_tv_poster` | the poster, for a picture card |
+| `button.stremio_tv_play_pause`, `button.stremio_tv_stop`, `button.stremio_tv_skip_forward` | control (skip = +30 s) |
+
+The state is updated on every play/pause/seek and every 15 s while playing, as retained
+JSON on `stremio_tv/<box>/state`. `stremio_tv/<box>/availability` is `online`, and the
+broker switches it to `offline` itself if the app quits or crashes. Commands go to
+`stremio_tv/<box>/command`: `play`, `pause`, `toggle`, `stop`, `seek:+30`, `seek:-30`.
+
+Example: pause the movie when the doorbell rings.
+
+```yaml
+- alias: Doorbell pauses the movie
+  triggers:
+    - trigger: state
+      entity_id: binary_sensor.doorbell
+      to: "on"
+  conditions:
+    - condition: state
+      entity_id: sensor.stremio_tv_state
+      state: playing
+  actions:
+    - action: mqtt.publish
+      data:
+        topic: stremio_tv/living_room/command
+        payload: pause
+```
+
+More examples and the design are in [docs/home-assistant-brainstorm.md](docs/home-assistant-brainstorm.md).
+
 ## Development & tests
 
 The UI is plain HTML/CSS/JS in `ui/`; the native shell (`native/`) hosts it in a Qt
@@ -132,7 +193,8 @@ npm run test:native-flow  # player flow against a simulated native shell
 ```
 
 The UI tests need a Chromium binary (`CHROMIUM_PATH`). The end-to-end test of the real
-app (Qt, libmpv, Wayland, PulseAudio) runs in Docker:
+app (Qt, libmpv, Wayland, PulseAudio, and the Home Assistant link against a real Mosquitto
+broker) runs in Docker:
 
 ```bash
 docker build -t stremio-tv-native-dev native/dev
@@ -141,5 +203,6 @@ docker run --rm -v "$PWD":/src -w /src -e SHOTS=1 stremio-tv-native-dev sh nativ
 
 Project layout: `native/` is the Qt shell; `ui/` holds `js/nav.js` (spatial navigation),
 `js/addons.js` (addon protocol client), `js/player.js` (player + overlay),
-`js/mpv-video.js` (libmpv as a `<video>`-like element), `js/screens/*` (screens) and
-`js/stremio-api.js` (account login/addon import).
+`js/mpv-video.js` (libmpv as a `<video>`-like element), `js/homeassistant.js` (Home
+Assistant glue), `js/screens/*` (screens) and `js/stremio-api.js` (account login/addon
+import).

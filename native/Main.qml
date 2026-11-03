@@ -33,6 +33,11 @@ Window {
         WebChannel.id: "mpv"
     }
 
+    HomeAssistant {
+        id: homeAssistant
+        WebChannel.id: "homeAssistant"
+    }
+
     MpvVideo {
         anchors.fill: parent
         controller: mpv
@@ -63,7 +68,7 @@ Window {
         settings.showScrollBars: false
         settings.focusOnNavigationEnabled: true
         webChannel: WebChannel {
-            registeredObjects: [shell, mpv]
+            registeredObjects: [shell, mpv, homeAssistant]
         }
 
         Component.onCompleted: {

@@ -15,9 +15,11 @@ import {
   MpvVideo, nativeMpvAvailable, applyAudioOutput, trackLabel, audioTrackDetails, audioOutputSummary,
 } from './mpv-video.js';
 import { iconSvg } from './icons.js';
+import { publishState, setCommandHandler, IDLE_STATE } from './homeassistant.js';
 
 const SEEK_COMMIT_MS = 650;
 const AUTOHIDE_MS = 5000;
+const HA_INTERVAL_MS = 15000;
 
 let session = null; // active playback session or null
 
@@ -145,6 +147,13 @@ export function openPlayer(ctx) {
   video.addEventListener('pause', notifyPlayback);
   video.addEventListener('ended', notifyPlayback);
 
+  // Home Assistant: what is playing, on every change and every 15 s while
+  // playing (HA formats the position; updated_at lets it extrapolate).
+  const reportToHa = () => { if (session === s) publishState(haState(s)); };
+  ['loadedmetadata', 'play', 'playing', 'pause', 'seeked'].forEach((type) => video.addEventListener(type, reportToHa));
+  s.haTimer = setInterval(() => { if (!video.paused) reportToHa(); }, HA_INTERVAL_MS);
+  s.reportToHa = reportToHa;
+
   // Pause when the app loses focus or is hidden: no decode, no stream
   // download, (almost) no CPU while another app is in front. Playback stays
   // paused on return — press OK to resume.
@@ -258,6 +267,7 @@ export function openPlayer(ctx) {
     if (s.pendingSeek === null) return;
     video.currentTime = s.pendingSeek;
     s.pendingSeek = null;
+    s.reportToHa();
     s.seekStreak = 0;
     seekPreview.textContent = '';
     if (s.mode === 'seek') {
@@ -422,11 +432,47 @@ export function openPlayer(ctx) {
   s.saveProgress = saveProgress;
   s.saveTimer = setInterval(saveProgress, 5000);
 
+  // ---- Home Assistant commands: the same actions as the remote ----
+  setCommandHandler((cmd) => {
+    if (session !== s) return;
+    if (cmd.action === 'stop') { closePlayer(); return; }
+    if (cmd.action === 'seek') {
+      const dur = video.duration || Infinity;
+      video.currentTime = Math.max(0, Math.min(isFinite(dur) ? dur - 1 : Infinity, video.currentTime + cmd.by));
+      updateBar();
+      reportToHa();
+      return;
+    }
+    const wantPaused = cmd.action === 'pause' ? true : cmd.action === 'play' ? false : !video.paused;
+    if (wantPaused !== video.paused) togglePlay();
+  });
+
   // ---- keys ----
   s.keyHandler = makeKeyHandler(s);
   Nav.pushKeyHandler(s.keyHandler);
   setMode('hidden');
   video.play().catch(() => {});
+  reportToHa();
+}
+
+// The player's state as Home Assistant sees it.
+function haState(s) {
+  const { ctx, video } = s;
+  const meta = ctx.meta || {};
+  const duration = isFinite(video.duration) && video.duration > 0 ? video.duration : null;
+  const position = Math.max(0, video.currentTime || 0);
+  const poster = /^https?:\/\//i.test(meta.poster || '') ? meta.poster : null;
+  return {
+    state: video.paused || video.ended ? 'paused' : 'playing',
+    title: meta.name || null,
+    type: meta.type || null,
+    episode: ctx.videoLabel || null,
+    position,
+    duration,
+    progress: duration ? Math.min(100, (position / duration) * 100) : null,
+    poster,
+    imdb_id: meta.imdb_id || /^tt\d+/.exec(meta.id || '')?.[0] || null,
+  };
 }
 
 function dedupeSubs(subs) {
@@ -489,6 +535,9 @@ export function closePlayer() {
   session = null;
   try { s.saveProgress(); } catch { /* ignore */ }
   clearInterval(s.saveTimer);
+  clearInterval(s.haTimer);
+  setCommandHandler(null);
+  publishState(IDLE_STATE);
   clearTimeout(s.autohideTimer);
   clearTimeout(s.seekCommitTimer);
   Nav.popKeyHandler(s.keyHandler);

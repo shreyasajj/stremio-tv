@@ -1,7 +1,10 @@
 // Browser stand-in for the native Qt shell's `window.shell.mpv` bridge, so
 // the libmpv code path (MpvVideo, transparent page, track menus) can be
 // driven in plain headless Chromium. Install with page.addInitScript().
-// Simulates mpv loading a file, emitting time-pos while unpaused, and EOF.
+// Simulates mpv loading a file, emitting time-pos while unpaused, and EOF,
+// and `shell.homeAssistant` (window.__fakeHA records what the UI configures
+// and publishes; .command(c) and .phone(event) play Home Assistant's and the
+// phone's part).
 module.exports = function installFakeNativeShell() {
   const subs = { prop: new Set(), loaded: new Set(), end: new Set() };
   const on = (set) => (cb) => { set.add(cb); return () => set.delete(cb); };
@@ -58,6 +61,51 @@ module.exports = function installFakeNativeShell() {
   };
 
   window.__fakeMpv = { state, log };
+
+  // Fake broker: "broker.test" and "10.0.0.2" accept password "secret".
+  const haSubs = { status: new Set(), command: new Set(), setup: new Set() };
+  const accepts = (s) => (s.host === 'broker.test' || s.host === '10.0.0.2') && s.password === 'secret';
+  const fakeHA = (window.__fakeHA = {
+    configured: [],
+    published: [],
+    tests: [],
+    setup: null,
+    status: { state: 'off', error: '' },
+    command: (c) => emit(haSubs.command, c),
+    phone: (event) => emit(haSubs.setup, event),
+  });
+  const homeAssistant = {
+    configure: (s) => {
+      fakeHA.configured.push({ ...s });
+      const next = !s.enabled || !s.host ? { state: 'off', error: '' }
+        : accepts(s) ? { state: 'connected', error: '' }
+          : { state: 'error', error: 'Not authorised: check the username and password' };
+      setTimeout(() => {
+        fakeHA.status = { ...next, host: s.host, port: s.port, box: s.box };
+        emit(haSubs.status, fakeHA.status);
+      }, 50);
+    },
+    publish: (st) => { fakeHA.published.push(JSON.parse(JSON.stringify(st))); },
+    status: () => Promise.resolve(fakeHA.status),
+    onStatus: on(haSubs.status),
+    onCommand: on(haSubs.command),
+    onPhoneSetup: on(haSubs.setup),
+    test: (s) => {
+      fakeHA.tests.push({ ...s });
+      return new Promise((resolve) => setTimeout(() => resolve(accepts(s)
+        ? { ok: true, error: '' }
+        : { ok: false, error: 'Not authorised: check the username and password' }), 100));
+    },
+    startPhoneSetup: (current) => {
+      fakeHA.setup = { open: true, current };
+      return Promise.resolve({
+        url: 'http://192.168.1.50:8765/setup?code=4F7K9Q',
+        code: '4F7K9Q',
+        qrPng: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGNgAAAAAgABSK+kcQAAAABJRU5ErkJggg==',
+      });
+    },
+    stopPhoneSetup: () => { if (fakeHA.setup) fakeHA.setup.open = false; },
+  };
   window.shell = {
     isNative: true,
     testMode: true,
@@ -66,6 +114,7 @@ module.exports = function installFakeNativeShell() {
     onWindowBlur: () => () => {},
     onWindowFocus: () => () => {},
     mpv,
+    homeAssistant,
   };
   window.shellReady = Promise.resolve();
 };
