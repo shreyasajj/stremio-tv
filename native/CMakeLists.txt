@@ -1,11 +1,11 @@
 cmake_minimum_required(VERSION 3.21)
-project(StremioTVNative VERSION 0.5.0 LANGUAGES CXX)
+project(StremioTVNative VERSION 0.6.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(STREMIO_TV_APP_ID "io.github.shreyasajj.StremioTV" CACHE STRING "Desktop file / Wayland app id")
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Quick Qml Network OpenGL WebEngineQuick WebChannel)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Quick Qml Network OpenGL WebEngineCore WebEngineQuick WebChannel)
 find_package(Qt6 6.5 QUIET COMPONENTS DBus)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(MPV REQUIRED IMPORTED_TARGET mpv)
@@ -23,6 +23,7 @@ qt_add_qml_module(stremio-tv-native
         mpvcontroller.cpp mpvcontroller.h
         mpvitem.cpp mpvitem.h
         shellbridge.cpp shellbridge.h
+        embedreferrer.cpp embedreferrer.h
         homeassistant.cpp homeassistant.h
         phonesetup.cpp phonesetup.h
         third_party/qrcodegen/qrcodegen.cpp third_party/qrcodegen/qrcodegen.hpp
@@ -36,7 +37,7 @@ target_compile_definitions(stremio-tv-native PRIVATE
     STREMIO_TV_SOURCE_UI="${STREMIO_TV_UI_SRC}")
 
 target_link_libraries(stremio-tv-native PRIVATE
-    Qt6::Quick Qt6::Qml Qt6::Network Qt6::OpenGL Qt6::WebEngineQuick Qt6::WebChannel
+    Qt6::Quick Qt6::Qml Qt6::Network Qt6::OpenGL Qt6::WebEngineCore Qt6::WebEngineQuick Qt6::WebChannel
     PkgConfig::MPV PkgConfig::MOSQUITTO)
 if(TARGET Qt6::DBus)
     target_link_libraries(stremio-tv-native PRIVATE Qt6::DBus)

@@ -75,6 +75,25 @@ export async function render({ router }) {
     }
   );
 
+  // Trailer previews
+  const TRAILER_OPTIONS = [
+    { label: 'On, with sound', value: 'sound' },
+    { label: 'On, muted', value: 'muted' },
+    { label: 'Off', value: 'off' },
+  ];
+  settingItem(
+    'Trailer previews',
+    `${(TRAILER_OPTIONS.find((o) => o.value === settings.trailerPreviews) || TRAILER_OPTIONS[0]).label}. ` +
+      'Resting on a title on Home or Discover for a few seconds plays its trailer from YouTube.',
+    async () => {
+      const chosen = await pickerModal('Trailer previews', TRAILER_OPTIONS, { selectedValue: settings.trailerPreviews });
+      if (chosen !== null) {
+        Storage.setSettings({ trailerPreviews: chosen });
+        router.refresh();
+      }
+    }
+  );
+
   // Audio output (native libmpv player only)
   if (nativeMpvAvailable()) {
     const devices = (await window.shell.mpv.get('audio-device-list')) || [];

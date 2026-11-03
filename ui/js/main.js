@@ -17,6 +17,8 @@ import * as addons from './screens/addons.js';
 import * as settings from './screens/settings.js';
 import * as homeassistant from './screens/homeassistant.js';
 
+const MOTION_DELAY_MS = 4000;
+
 const SCREENS = { home, discover, search, detail, library, addons, settings, homeassistant };
 const container = document.getElementById('screens');
 const sidebar = document.getElementById('sidebar');
@@ -142,6 +144,8 @@ async function boot() {
   }
 
   await router.show('home');
+  // Focus animations wait until startup has settled (see .motion in tv.css).
+  setTimeout(() => document.documentElement.classList.add('motion'), MOTION_DELAY_MS);
 }
 
 window.stremioTV = { router, Storage }; // handy for debugging from devtools

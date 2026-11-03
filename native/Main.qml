@@ -52,6 +52,11 @@ Window {
         persistentCookiesPolicy: WebEngineProfile.ForcePersistentCookies
     }
 
+    // Trailer previews: YouTube's embedded player needs to know who embeds it.
+    EmbedReferrer {
+        profile: profile
+    }
+
     WebEngineView {
         id: web
         anchors.fill: parent

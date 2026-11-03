@@ -1,3 +1,11 @@
+### 0.6.0
+- **Trailer previews.** Rest on a title for a few seconds and its trailer plays. On Home's first row it plays behind the title card and keeps playing while you're on Play or Details; elsewhere on Home and in Discover it fills the screen behind the title's name. Any key brings the screen back (OK also opens the title). Choose with sound, muted or off in **Settings → Trailer previews**.
+- **Rows that stay in the middle.** On Home the row you're on now slides to the middle of the screen, with the one above it still in view, all the way to the last row. On the first row (Continue Watching) the title card is back above it, with Play and Details right over the row.
+- **Animated focus.** The focused poster grows bigger, with a short zoom as you move between titles, on Home, Discover, Library and Search. It starts a few seconds after launch, which keeps clear of the web view crash fixed in 0.3.1.
+- Down on the last row of Home, or at the end of Discover, no longer jumps to the nav rail.
+
+---
+
 ### 0.5.0
 - **More of Home at once.** Move down past the first row and the title card at the top fades away; the rows slide up so three of them fill the screen. Go back up to the first row and the title card returns. Posters on Home are a little smaller so the three rows fit.
 - **New rows on Home.** New Releases (this year's movies and series from Cinemeta) now load instead of being skipped, and there are genre rows for Drama, Comedy, Action, Thriller and Sci-Fi.

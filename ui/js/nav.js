@@ -56,6 +56,9 @@ function score(from, to, dir) {
     overlap = Math.min(from.right, to.right) - Math.max(from.left, to.left);
   }
   if (primary <= 1) return Infinity;
+  // Left/Right: the target's centre must lie past our edge, or a button
+  // stacked just above (Home's hero, over the first card) would count.
+  if ((dir === 'left' || dir === 'right') && primary <= from.width / 2) return Infinity;
   // Strongly prefer candidates aligned with us on the cross axis.
   const alignBonus = overlap > 0 ? 0 : 1e6;
   return alignBonus + primary + secondary * 2.5;

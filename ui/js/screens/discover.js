@@ -1,9 +1,11 @@
-// Discover: pick a catalog + genre, browse a paginated grid.
+// Discover: pick a catalog + genre, browse a paginated grid. Resting on a
+// title plays its trailer full screen.
 
 import { el, metaCard, toast, pickerModal } from '../ui.js';
 import { browsableCatalogs, getCatalog, genreOptions } from '../addons.js';
 import { Nav } from '../nav.js';
 import { icon } from '../icons.js';
+import { trailerPreviews } from '../trailer.js';
 
 const PAGE = 50;
 
@@ -23,7 +25,7 @@ export async function render({ router }) {
   const genreLabelEl = el('span');
   const catalogBtn = el('button', { class: 'focusable btn', 'data-nav-default': '' }, catalogLabelEl, icon('chevronDown'));
   const genreBtn = el('button', { class: 'focusable btn' }, genreLabelEl, icon('chevronDown'));
-  const grid = el('div', { class: 'meta-grid' });
+  const grid = el('div', { class: 'meta-grid', 'data-nav-stop': 'down' });
   root.append(el('div', { class: 'selector-bar' }, catalogBtn, genreBtn), grid);
 
   function current() { return catalogs[state.index]; }
@@ -53,6 +55,7 @@ export async function render({ router }) {
         const card = metaCard(meta, {
           onSelect: () => router.push('detail', { type: meta.type || catalog.type, id: meta.id, preview: meta }),
         });
+        card._type = catalog.type;
         card.addEventListener('focus', () => {
           // infinite scroll: nearing the end loads the next page
           const cards = [...grid.children];
@@ -103,6 +106,7 @@ export async function render({ router }) {
     }
   });
 
+  trailerPreviews(root);
   reset();
   return root;
 }

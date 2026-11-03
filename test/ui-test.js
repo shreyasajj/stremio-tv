@@ -64,9 +64,31 @@ function check(name, cond, info = '') {
   // Seed the mock addon + skip first-run before the app boots.
   const manifest = await (await fetch(`${mockAddon.BASE}/manifest.json`)).json();
   await page.addInitScript(([m, base]) => {
+    if (window !== window.top) return; // not in the (fake) YouTube frame
     localStorage.setItem('stv.addons', JSON.stringify([{ transportUrl: base + '/manifest.json', manifest: m }]));
     localStorage.setItem('stv.firstRunDone', '1');
+    // Trailers would start during any pause and swallow the next key; the
+    // trailer checks turn them on.
+    localStorage.setItem('stv.settings', JSON.stringify({ trailerPreviews: 'off' }));
   }, [manifest, mockAddon.BASE]);
+
+  // Offline stand-in for YouTube's embedded player: reports "playing" to a
+  // page that is listening, or an embedding error for ids starting mockBroken.
+  await page.route('https://www.youtube-nocookie.com/embed/**', (route) => route.fulfill({
+    contentType: 'text/html',
+    body: `<body style="background:#246"><script>
+      const id = location.pathname.split('/').pop();
+      addEventListener('message', (e) => {
+        const d = JSON.parse(e.data);
+        if (d.event === 'command') document.body.dataset[d.func] = '1';
+        if (d.event !== 'listening') return;
+        parent.postMessage(JSON.stringify(id.startsWith('mockBroken')
+          ? { event: 'onError', info: 150 } : { event: 'infoDelivery', info: { playerState: 1, currentTime: 0 } }), '*');
+      });
+    </script></body>`,
+  }));
+  const trailers = (on) => page.evaluate((v) => window.stremioTV.Storage.setSettings({ trailerPreviews: v }), on ? 'sound' : 'off');
+  const TRAILER_WAIT = 3800; // dwell (3 s) + meta fetch + fade
 
   await page.goto(`http://127.0.0.1:${UI_PORT}/ui/index.html`);
   await page.waitForSelector('.meta-card', { timeout: 10000 });
@@ -79,9 +101,25 @@ function check(name, cond, info = '') {
 
   // ---- Past the first row the hero gives way to three rows ----
   const browsing = () => page.evaluate(() => document.querySelector('.home-screen').classList.contains('browsing'));
+  // Which of the three lanes (0 top … 2 bottom) the focused row sits in, and
+  // the one above it; null when off the lane grid.
+  const lanes = () => page.evaluate(() => {
+    if (!document.activeElement.closest(".row-section")) return { focused: null, outside: document.activeElement.className };
+    const safeY = innerHeight * 0.05;
+    const lane = (innerHeight - safeY) / 3;
+    const laneOf = (sec) => {
+      if (!sec) return null;
+      const n = (sec.getBoundingClientRect().top - safeY) / lane;
+      return Math.abs(n - Math.round(n)) < 0.03 ? Math.round(n) : +n.toFixed(2);
+    };
+    const sec = document.activeElement.closest('.row-section');
+    return { focused: laneOf(sec), above: laneOf(sec.previousElementSibling) };
+  });
+  check('the first row sits in the bottom lane under the hero', (await lanes()).focused === 2, JSON.stringify(await lanes()));
   await key('ArrowDown');
   await page.waitForTimeout(800);
   check('Down past the first row hides the hero', await browsing());
+  check('the focused row moves to the middle lane, the first row to the top', JSON.stringify(await lanes()) === '{"focused":1,"above":0}', JSON.stringify(await lanes()));
   const fullRows = await page.evaluate(() => [...document.querySelectorAll('.home-screen .row-section')].filter((sec) => {
     const r = sec.querySelector('.meta-card .poster')?.getBoundingClientRect();
     return r && r.top >= 0 && r.bottom <= innerHeight;
@@ -89,9 +127,73 @@ function check(name, cond, info = '') {
   check('three rows fit on screen while browsing', fullRows >= 3, `${fullRows} rows`);
   check('genre rows are listed', (await page.locator('.home-screen h2.row-title').allTextContents()).some((t) => t.startsWith('Drama')));
   await shot('01b-home-browsing');
+  await key('ArrowDown');
+  await page.waitForTimeout(800);
+  check('each Down keeps the focused row in the middle lane', JSON.stringify(await lanes()) === '{"focused":1,"above":0}', JSON.stringify(await lanes()));
+  const rowCount = await page.locator('.home-screen .row-section').count();
+  await key('ArrowDown', rowCount, 150);
+  await page.waitForTimeout(900);
+  check('Down on the last row stays there', await page.evaluate(() => !!document.activeElement.closest('.row-section') && !document.activeElement.closest('.row-section').nextElementSibling), await focusedText());
+  check('the last row also stops in the middle lane', (await lanes()).focused === 1, JSON.stringify(await lanes()));
+  await key('ArrowUp', rowCount - 2, 150);
+  await page.waitForTimeout(800);
+  check('Up keeps the focused row in the middle lane', JSON.stringify(await lanes()) === '{"focused":1,"above":0}', JSON.stringify(await lanes()));
   await key('ArrowUp');
   await page.waitForTimeout(800);
   check('Up to the first row brings the hero back', !(await browsing()), await focusedText());
+  check('the first row is back in the bottom lane', (await lanes()).focused === 2, JSON.stringify(await lanes()));
+
+  // ---- Focus zoom: animated once the app has settled ----
+  await page.waitForFunction(() => document.documentElement.classList.contains('motion'), null, { timeout: 8000 }).catch(() => {});
+  const poster = () => page.evaluate(() => {
+    const cs = getComputedStyle(document.activeElement.querySelector('.poster'));
+    return { scale: new DOMMatrix(cs.transform).a, transition: cs.transitionDuration };
+  });
+  check('card focus animates once the app has settled', (await poster()).transition !== '0s', JSON.stringify(await poster()));
+  await key('ArrowRight');
+  const midZoom = (await poster()).scale;
+  await page.waitForTimeout(400);
+  const zoom = (await poster()).scale;
+  check('the focused card grows', zoom > 1.12, String(zoom));
+  check('the zoom animates in', midZoom < zoom, `${midZoom} -> ${zoom}`);
+  await key('ArrowLeft');
+  await page.waitForTimeout(400);
+
+  // ---- Trailer previews ----
+  await trailers(true);
+  await key('ArrowRight');
+  await key('ArrowLeft');
+  await page.waitForTimeout(400);
+  check('no trailer before resting on a title', (await page.locator('.hero-trailer.on').count()) === 0);
+  await page.waitForTimeout(TRAILER_WAIT);
+  check('resting on a first-row title plays its trailer in the hero', (await page.locator('.hero-trailer.on').count()) === 1);
+  check('a trailer that cannot be embedded falls back to the next',
+    (await page.locator('.hero-trailer .trailer-frame').getAttribute('src').catch(() => '')).includes('/mockTrailer'),
+    await page.locator('.hero-trailer .trailer-frame').first().getAttribute('src').catch(() => 'none'));
+  check('the hero trailer leaves focus on the card', (await focusedClass()).includes('meta-card'), await focusedText());
+  await shot('01c-home-trailer');
+  await key('ArrowUp');
+  check('the trailer keeps playing on the hero buttons', (await page.locator('.hero-trailer.on').count()) === 1);
+  await key('ArrowDown');
+  await key('ArrowRight');
+  check('moving on stops the trailer', (await page.locator('.hero-trailer.on').count()) === 0);
+  await key('ArrowLeft');
+  // down to a row of movies (the mock series has no trailer)
+  let downs = 0;
+  do { await key('ArrowDown'); downs++; } while (!(await focusedText()).startsWith('Mock Movie') && downs < 5);
+  await page.waitForTimeout(TRAILER_WAIT + 400);
+  check('below the first row the trailer plays full screen', (await page.locator('.trailer-stage.on').count()) === 1);
+  const stageTitle = await page.locator('.trailer-stage .title-text').textContent().catch(() => '');
+  check('the full-screen trailer names the title', stageTitle && (await focusedText()).includes(stageTitle), `${stageTitle} / ${await focusedText()}`);
+  await shot('01d-home-trailer-full');
+  const beforeKey = await focusedText();
+  await key('ArrowRight');
+  await page.waitForTimeout(700);
+  check('a key closes the full-screen trailer', (await page.locator('.trailer-stage').count()) === 0);
+  check('the key that closes it does not move focus', (await focusedText()) === beforeKey, await focusedText());
+  await trailers(false);
+  await key('ArrowUp', downs);
+  await page.waitForTimeout(800);
 
   // ---- Arrow key navigation within a row ----
   const before = await focusedText();
@@ -142,6 +244,17 @@ function check(name, cond, info = '') {
   await page.waitForSelector('.meta-grid .meta-card', { timeout: 10000 });
   check('discover grid renders', await page.locator('.meta-grid .meta-card').count() >= 10);
   await shot('03-discover');
+
+  // Discover: trailers play full screen; Back only closes them
+  await trailers(true);
+  await page.evaluate(() => document.querySelector('.meta-grid .meta-card').focus());
+  await page.waitForTimeout(TRAILER_WAIT + 400);
+  check('resting on a Discover title plays its trailer full screen', (await page.locator('.trailer-stage.on').count()) === 1);
+  await key('Escape');
+  await page.waitForTimeout(700);
+  check('Back closes the trailer and stays on Discover',
+    (await page.locator('.trailer-stage').count()) === 0 && (await page.locator('.screen:not(.hidden) .meta-grid').count()) === 1);
+  await trailers(false);
 
   // ---- Catalog picker modal ----
   await page.evaluate(() => document.querySelector('.selector-bar .btn').focus());
