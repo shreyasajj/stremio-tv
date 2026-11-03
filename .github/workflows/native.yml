@@ -39,7 +39,7 @@ jobs:
           if-no-files-found: ignore
 
   ui:
-    name: UI test (browser / Electron path)
+    name: UI test (browser)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4

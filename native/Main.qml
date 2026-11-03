@@ -15,8 +15,7 @@ Window {
     color: "black"
     title: "Stremio TV"
 
-    // Like the Electron kiosk window: if something drops us out of
-    // fullscreen, go back.
+    // Kiosk-style: if something drops us out of fullscreen, go back.
     onVisibilityChanged: {
         if (!shell.windowed && window.visibility !== Window.FullScreen && window.visibility !== Window.Hidden)
             Qt.callLater(window.showFullScreen)

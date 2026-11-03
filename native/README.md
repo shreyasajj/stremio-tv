@@ -1,6 +1,6 @@
 # Native Stremio TV shell (Qt 6 + libmpv)
 
-The same remote-first web UI as the Electron app (`../ui`), hosted in a native
+The remote-first web UI (`../ui`), hosted in a native
 Qt 6 window (Wayland or X11) with **embedded libmpv** for playback:
 
 ```
@@ -11,7 +11,8 @@ QQuickWindow (fullscreen, OpenGL)
 ```
 
 `ui/js/mpv-video.js` makes mpv look like an HTML `<video>` element, so
-`player.js` drives either backend. Under Electron nothing changes.
+`player.js` drives it with the same code it uses for `<video>` in the
+browser-based UI tests.
 
 | File | Role |
 | --- | --- |

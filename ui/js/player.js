@@ -36,8 +36,9 @@ export function openPlayer(ctx) {
   root.classList.remove('hidden');
   root.classList.add('loading');
 
-  // Native Qt shell: embedded libmpv (all codecs, real track switching,
-  // passthrough). Electron/browser: the HTML5 <video> element.
+  // The app plays through the native shell's embedded libmpv (all codecs,
+  // real track switching, passthrough). In a plain browser (the UI tests)
+  // there is no shell, so the HTML5 <video> element stands in.
   const video = nativeMpvAvailable() ? new MpvVideo() : el('video', { autoplay: '', preload: 'auto' });
   if (!video.isNative) video.crossOrigin = 'anonymous';
 
@@ -69,7 +70,7 @@ export function openPlayer(ctx) {
   root.append(video.element || video, overlay);
 
   const s = (session = {
-    ctx, root, video, seekBar, buttons, hls: null,
+    ctx, root, video, seekBar, buttons,
     mode: 'hidden',            // hidden | seek | controls
     pendingSeek: null,         // target seconds while scrubbing
     seekStreak: 0,
@@ -110,20 +111,8 @@ export function openPlayer(ctx) {
   }
 
   // ---- media source ----
-  const isHls = /\.m3u8(\?|$)/i.test(ctx.url);
-  if (video.isNative) {
-    applyAudioOutput(video.mpv, Storage.getSettings());
-    video.src = ctx.url;
-  } else if (isHls && window.Hls && window.Hls.isSupported()) {
-    s.hls = new window.Hls();
-    s.hls.loadSource(ctx.url);
-    s.hls.attachMedia(video);
-    s.hls.on(window.Hls.Events.ERROR, (_, data) => {
-      if (data.fatal) fail(`Stream error (${data.type})`);
-    });
-  } else {
-    video.src = ctx.url;
-  }
+  if (video.isNative) applyAudioOutput(video.mpv, Storage.getSettings());
+  video.src = ctx.url;
 
   // ---- video events ----
   video.addEventListener('loadedmetadata', () => {
@@ -374,12 +363,8 @@ export function openPlayer(ctx) {
 
   async function audioMenu() {
     if (video.isNative) { await nativeAudioMenu(); bumpAutohide(); return; }
-    let options = [];
-    if (s.hls && s.hls.audioTracks && s.hls.audioTracks.length > 1) {
-      options = s.hls.audioTracks.map((t, i) => ({ label: t.name || t.lang || `Track ${i + 1}`, value: i }));
-      const chosen = await pickerModal('Audio track', options, { selectedValue: s.hls.audioTrack });
-      if (chosen !== null) s.hls.audioTrack = chosen;
-    } else if (video.audioTracks && video.audioTracks.length > 1) {
+    const options = [];
+    if (video.audioTracks && video.audioTracks.length > 1) {
       for (let i = 0; i < video.audioTracks.length; i++) {
         const t = video.audioTracks[i];
         options.push({ label: t.label || t.language || `Track ${i + 1}`, value: i });
@@ -511,7 +496,6 @@ export function closePlayer() {
   window.removeEventListener('blur', s.pauseForBackground);
   document.removeEventListener('visibilitychange', s.onVisibility);
   window.shell?.setPlaybackActive?.(false);
-  if (s.hls) { try { s.hls.destroy(); } catch { /* ignore */ } }
   if (s.video.isNative) {
     s.video.destroy();
   } else {

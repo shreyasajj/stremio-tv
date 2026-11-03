@@ -1,7 +1,7 @@
 #pragma once
 
-// The native counterpart of the Electron preload (`window.shell`): exposed to
-// the web UI over QWebChannel and wrapped by bridge.js.
+// `window.shell` for the web UI: exposed over QWebChannel and wrapped by
+// bridge.js.
 
 #include <QObject>
 #include <QUrl>
