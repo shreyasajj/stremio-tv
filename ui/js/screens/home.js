@@ -4,7 +4,9 @@
 // (which sits in the bottom lane); it follows focus along that row (debounced,
 // crossfaded) and its Play/Details buttons sit one press Up. Past the first
 // row the hero fades out and the focused row slides to the middle lane.
-// Resting on a title plays its trailer: in the hero, or full screen.
+// Resting on a title plays its trailer in the hero; below the first row the
+// rows slide down a lane for it (the focused one to the bottom, the ones
+// above it fading out) and slide back when focus moves on.
 
 import { el, metaCard, toast, titleArt, factsRow, nextEpisodeLine } from '../ui.js';
 import { Storage } from '../storage.js';
@@ -12,8 +14,8 @@ import { browsableCatalogs, getCatalog, catalogRequiredExtra, catalogSupportsExt
 import { playFlow, resumeFlow } from '../streams.js';
 import { Nav } from '../nav.js';
 import { icon, iconSvg } from '../icons.js';
-import { backdropUrl, logoUrl, cachedMeta, preload, imdbId, nextEpisodeText } from '../art.js';
-import { trailerPreviews } from '../trailer.js';
+import { backdropUrl, logoUrl, cachedMeta, preload, imdbId, nextEpisodeText, trailerIds } from '../art.js';
+import { trailerPreviews, playTrailer } from '../trailer.js';
 
 const ROW_LIMIT = 8; // catalog rows on home; full browsing lives in Discover
 const GENRE_ROWS = ['Drama', 'Comedy', 'Action', 'Thriller', 'Sci-Fi']; // when the catalog offers them
@@ -35,8 +37,11 @@ export async function render({ router }) {
   const playIcon = el('span', { class: 'btn-icon' });
   const playBtn = el('button', { class: 'focusable btn primary hero-play' }, playIcon, playLabel);
   const detailsBtn = el('button', { class: 'focusable btn hero-details' }, icon('info'), 'Details');
+  // shown for titles that list a trailer
+  const trailerBtn = el('button', { class: 'focusable btn hero-trailer-btn' }, icon('play'), 'Trailer');
+  trailerBtn.hidden = true;
   const heroContent = el('div', { class: 'hero-content hidden' },
-    artSlot, factsSlot, desc, el('div', { class: 'btn-row' }, playBtn, detailsBtn));
+    artSlot, factsSlot, desc, el('div', { class: 'btn-row' }, playBtn, detailsBtn, trailerBtn));
   const trailer = el('div', { class: 'hero-trailer' });
   // Down on the last row stays there rather than dropping onto the rail.
   const rows = el('div', { class: 'home-rows', 'data-scroll': 'start', 'data-nav-stop': 'down' });
@@ -69,6 +74,7 @@ export async function render({ router }) {
     playIcon.innerHTML = iconSvg('play');
     heroContent.dataset.type = type;
     detailsBtn.dataset.id = meta.id;
+    trailerBtn.hidden = !trailerIds(meta).length;
   }
 
   async function showHero(card) {
@@ -96,13 +102,16 @@ export async function render({ router }) {
 
     // Catalog items are often thin (no synopsis, runtime or backdrop):
     // fill those in from the full meta without another fade.
-    // Series also need their episode list for the next-episode line.
-    if (meta.description && meta.background && meta.runtime && (hero.type !== 'series' || meta.videos)) return;
+    // Series also need their episode list for the next-episode line, and
+    // the Trailer button the trailer list.
+    if (meta.description && meta.background && meta.runtime && (hero.type !== 'series' || meta.videos)
+      && trailerIds(meta).length) return;
     const full = await cachedMeta(hero.type, meta.id);
     if (!full || seq !== hero.seq) return;
     const merged = { ...meta, ...full, type: hero.type };
     hero.meta = merged;
     fillText(merged, { logoLoaded: logoLoaded && logoUrl(merged) === logo });
+    trailerBtn.hidden = !trailerIds(merged).length;
     if (full.background && full.background !== bg && await preload(full.background) && seq === hero.seq) {
       setBackdrop(full.background);
     }
@@ -140,6 +149,7 @@ export async function render({ router }) {
       toast(e.message, 'error');
     }
   });
+  trailerBtn.addEventListener('click', () => { if (hero.meta) playTrailer(hero.meta); });
   detailsBtn.addEventListener('click', () => {
     if (hero.meta) router.push('detail', { type: hero.type, id: hero.meta.id, preview: hero.meta });
   });
@@ -155,12 +165,40 @@ export async function render({ router }) {
   }
   Nav.pushKeyHandler(heroKeys);
 
-  // In the hero while it shows the card; it keeps playing on the hero's
-  // buttons. Full screen for cards below the first row.
+  // A trailer below the first row: the hero comes back for that card, and
+  // the rows slide down so the card's row sits in the bottom lane under it.
+  function enterPreview(card) {
+    if (document.activeElement !== card) return;
+    clearTimeout(hero.timer);
+    hero.pending = card;
+    showHero(card);
+    const sec = card.closest('.row-section');
+    for (let s = sec.previousElementSibling; s; s = s.previousElementSibling) s.classList.add('above');
+    root.classList.add('previewing');
+    const cs = getComputedStyle(rows);
+    // the bottom lane: one lane (the bottom padding) below where rows pin
+    Nav.glideTo(rows, sec.offsetTop - parseFloat(cs.scrollPaddingTop) - parseFloat(cs.paddingBottom));
+  }
+
+  function exitPreview() {
+    if (!root.classList.contains('previewing')) return;
+    root.classList.remove('previewing');
+    rows.querySelectorAll('.row-section.above').forEach((s) => s.classList.remove('above'));
+    // Focus that moved on has already placed its row; a trailer that ended
+    // by itself leaves the row to slide back up.
+    const cur = document.activeElement;
+    if (rows.contains(cur)) Nav.reveal(cur);
+  }
+
+  // Plays in the hero: on the first row while the hero shows the card (and
+  // on through its buttons), below it in the preview layout.
   trailerPreviews(root, {
-    inline: (card) => (!root.classList.contains('browsing') && hero.card === card
-      ? { host: trailer, keeps: (t) => t === card || heroContent.contains(t) }
-      : null),
+    inline: (card) => {
+      if (!root.classList.contains('browsing')) {
+        return hero.card === card ? { host: trailer, keeps: (t) => t === card || heroContent.contains(t) } : null;
+      }
+      return { host: trailer, keeps: (t) => t === card, onPlay: () => enterPreview(card), onStop: exitPreview };
+    },
   });
 
   // ---- rows ----

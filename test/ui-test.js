@@ -116,7 +116,10 @@ function check(name, cond, info = '') {
     return { focused: laneOf(sec), above: laneOf(sec.previousElementSibling) };
   });
   check('the first row sits in the bottom lane under the hero', (await lanes()).focused === 2, JSON.stringify(await lanes()));
-  await key('ArrowDown');
+  await key('ArrowDown', 1, 0);
+  await page.waitForTimeout(150);
+  const midway = (await lanes()).focused;
+  check('the rows glide to the next lane rather than jump', typeof midway === 'number' && midway > 1.05 && midway < 2.95, String(midway));
   await page.waitForTimeout(800);
   check('Down past the first row hides the hero', await browsing());
   check('the focused row moves to the middle lane, the first row to the top', JSON.stringify(await lanes()) === '{"focused":1,"above":0}', JSON.stringify(await lanes()));
@@ -174,6 +177,18 @@ function check(name, cond, info = '') {
   await shot('01c-home-trailer');
   await key('ArrowUp');
   check('the trailer keeps playing on the hero buttons', (await page.locator('.hero-trailer.on').count()) === 1);
+  await key('ArrowRight', 2);
+  check('the hero has a Trailer button after Play and Details', (await focusedText()) === 'Trailer', await focusedText());
+  await key('Enter');
+  await page.waitForTimeout(800);
+  check('the Trailer button plays it full screen', (await page.locator('.trailer-stage.on').count()) === 1);
+  const stageTitle = await page.locator('.trailer-stage .title-text').textContent().catch(() => '');
+  check('the full-screen trailer names the title', stageTitle === 'Mock Movie 1', stageTitle);
+  await shot('01d-home-trailer-full');
+  await key('ArrowLeft');
+  await page.waitForTimeout(700);
+  check('a key closes the full-screen trailer', (await page.locator('.trailer-stage').count()) === 0);
+  check('the key that closes it does not move focus', (await focusedText()) === 'Trailer', await focusedText());
   await key('ArrowDown');
   await key('ArrowRight');
   check('moving on stops the trailer', (await page.locator('.hero-trailer.on').count()) === 0);
@@ -182,15 +197,24 @@ function check(name, cond, info = '') {
   let downs = 0;
   do { await key('ArrowDown'); downs++; } while (!(await focusedText()).startsWith('Mock Movie') && downs < 5);
   await page.waitForTimeout(TRAILER_WAIT + 400);
-  check('below the first row the trailer plays full screen', (await page.locator('.trailer-stage.on').count()) === 1);
-  const stageTitle = await page.locator('.trailer-stage .title-text').textContent().catch(() => '');
-  check('the full-screen trailer names the title', stageTitle && (await focusedText()).includes(stageTitle), `${stageTitle} / ${await focusedText()}`);
-  await shot('01d-home-trailer-full');
+  const previewing = () => page.evaluate(() => document.querySelector('.home-screen').classList.contains('previewing'));
+  check('below the first row the trailer plays in the hero', (await previewing()) && (await page.locator('.hero-trailer.on').count()) === 1);
+  const heroTitle = await page.locator('.hero-content .title-text').textContent().catch(() => '');
+  check('the hero comes back for that title', heroTitle && (await focusedText()).includes(heroTitle), `${heroTitle} / ${await focusedText()}`);
+  check('its row slides down to the bottom lane', (await lanes()).focused === 2, JSON.stringify(await lanes()));
+  check('the rows above it fade out', await page.evaluate(() =>
+    getComputedStyle(document.activeElement.closest('.row-section').previousElementSibling).opacity === '0'));
+  check('no full-screen trailer on Home', (await page.locator('.trailer-stage').count()) === 0);
+  await shot('01e-home-trailer-preview');
   const beforeKey = await focusedText();
   await key('ArrowRight');
-  await page.waitForTimeout(700);
-  check('a key closes the full-screen trailer', (await page.locator('.trailer-stage').count()) === 0);
-  check('the key that closes it does not move focus', (await focusedText()) === beforeKey, await focusedText());
+  await page.waitForTimeout(800);
+  check('moving on ends the preview', !(await previewing()) && (await page.locator('.hero-trailer.on').count()) === 0);
+  check('the key still moves focus', (await focusedText()) !== beforeKey, await focusedText());
+  check('the rows slide back: focused row in the middle lane', (await lanes()).focused === 1, JSON.stringify(await lanes()));
+  check('the rows above show again', await page.evaluate(() =>
+    getComputedStyle(document.activeElement.closest('.row-section').previousElementSibling).opacity === '1'));
+  await key('ArrowLeft');
   await trailers(false);
   await key('ArrowUp', downs);
   await page.waitForTimeout(800);
@@ -245,16 +269,40 @@ function check(name, cond, info = '') {
   check('discover grid renders', await page.locator('.meta-grid .meta-card').count() >= 10);
   await shot('03-discover');
 
-  // Discover: trailers play full screen; Back only closes them
-  await trailers(true);
+  // Discover: no trailer by itself; a Trailer button over the focused title
   await page.evaluate(() => document.querySelector('.meta-grid .meta-card').focus());
   await page.waitForTimeout(TRAILER_WAIT + 400);
-  check('resting on a Discover title plays its trailer full screen', (await page.locator('.trailer-stage.on').count()) === 1);
+  check('Discover does not start trailers by itself', (await page.locator('.trailer-stage').count()) === 0);
+  const pill = page.locator('.trailer-pill');
+  check('a focused Discover title gets a Trailer button', await pill.isVisible());
+  check('the Trailer button sits over its poster', await page.evaluate(() => {
+    const p = document.querySelector('.trailer-pill').getBoundingClientRect();
+    const c = document.activeElement.getBoundingClientRect();
+    return p.left > c.left && p.right < c.right && p.top > c.top && p.bottom < c.bottom;
+  }));
+  const discoverCard = await focusedText();
+  await key('ArrowDown');
+  check('Down from the title reaches its Trailer button', (await focusedClass()).includes('trailer-pill'), await focusedText());
+  await shot('03a-discover-trailer-button');
+  await key('Enter');
+  await page.waitForTimeout(800);
+  check('the Trailer button plays it full screen', (await page.locator('.trailer-stage.on').count()) === 1);
+  check('the trailer is the focused title\'s',
+    discoverCard.includes(await page.locator('.trailer-stage .title-text').textContent().catch(() => '?')));
+  await shot('03b-discover-trailer');
   await key('Escape');
   await page.waitForTimeout(700);
-  check('Back closes the trailer and stays on Discover',
-    (await page.locator('.trailer-stage').count()) === 0 && (await page.locator('.screen:not(.hidden) .meta-grid').count()) === 1);
-  await trailers(false);
+  check('Back closes the trailer and stays on the button',
+    (await page.locator('.trailer-stage').count()) === 0 && (await focusedClass()).includes('trailer-pill'), await focusedText());
+  await key('ArrowUp');
+  check('Up returns to the title', (await focusedText()) === discoverCard, await focusedText());
+  await key('ArrowRight');
+  await page.waitForTimeout(300);
+  check('the button follows focus to the next title', await page.evaluate(() => {
+    const p = document.querySelector('.trailer-pill').getBoundingClientRect();
+    const c = document.activeElement.getBoundingClientRect();
+    return !document.querySelector('.trailer-pill').hidden && p.left > c.left && p.right < c.right;
+  }));
 
   // ---- Catalog picker modal ----
   await page.evaluate(() => document.querySelector('.selector-bar .btn').focus());
