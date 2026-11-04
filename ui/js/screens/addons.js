@@ -7,7 +7,7 @@ import { oskPrompt } from '../keyboard.js';
 import {
   installedAddons, installAddon, removeAddon, fetchAddon, installDefaultAddons,
 } from '../addons.js';
-import { login, logout, loggedInEmail, fetchAccountAddons } from '../stremio-api.js';
+import { importAccountAddons } from '../stremio-api.js';
 
 export async function render({ router }) {
   const root = el('div', { class: 'screen' });
@@ -36,15 +36,12 @@ export async function render({ router }) {
   const importBtn = el('button', { class: 'focusable btn' }, icon('download'), 'Import from Stremio account');
   importBtn.addEventListener('click', async () => {
     try {
-      if (!loggedInEmail()) {
-        const email = await oskPrompt({ title: 'Stremio account email' });
-        if (!email) return;
-        const password = await oskPrompt({ title: 'Stremio account password', password: true });
-        if (!password) return;
-        await login(email.trim(), password);
-        toast('Logged in as ' + email.trim());
-      }
-      const addons = await fetchAccountAddons();
+      // Signs in for this import only; nothing is kept.
+      const email = await oskPrompt({ title: 'Stremio account email' });
+      if (!email) return;
+      const password = await oskPrompt({ title: 'Stremio account password', password: true });
+      if (!password) return;
+      const addons = await importAccountAddons(email.trim(), password);
       let n = 0;
       for (const a of addons) {
         installAddon(a);

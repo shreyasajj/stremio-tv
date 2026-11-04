@@ -3,7 +3,6 @@
 import { el, toast, pickerModal, confirmModal } from '../ui.js';
 import { Storage } from '../storage.js';
 import { oskPrompt } from '../keyboard.js';
-import { logout, loggedInEmail } from '../stremio-api.js';
 import { nativeMpvAvailable, PASSTHROUGH_PRESETS } from '../mpv-video.js';
 import { haAvailable, statusText } from '../homeassistant.js';
 import { icon } from '../icons.js';
@@ -28,19 +27,11 @@ export async function render({ router }) {
 
   const settings = Storage.getSettings();
 
-  // Account
-  const email = loggedInEmail();
+  // Account: nothing is stored; importing signs in for that import only.
   settingItem(
     'Stremio account',
-    email ? `Logged in as ${email}` : 'Not logged in — log in from the Add-ons screen to import your addons',
-    async () => {
-      if (!email) { router.show('addons'); return; }
-      if (await confirmModal(`Log out of ${email}?`, { okLabel: 'Log out' })) {
-        logout();
-        toast('Logged out');
-        router.refresh();
-      }
-    },
+    'Import your addon collection from Add-ons → Import from Stremio account. You sign in for the import only; the app keeps no login.',
+    () => router.show('addons'),
     { attrs: { 'data-nav-default': '' } }
   );
 

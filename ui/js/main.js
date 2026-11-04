@@ -7,6 +7,7 @@ import { installedAddons, installDefaultAddons } from './addons.js';
 import { Storage } from './storage.js';
 import { isPlayerOpen } from './player.js';
 import { initHomeAssistant } from './homeassistant.js';
+import { forgetSavedSession } from './stremio-api.js';
 
 import * as home from './screens/home.js';
 import * as discover from './screens/discover.js';
@@ -129,6 +130,7 @@ async function boot() {
   });
   wireSidebar();
   initHomeAssistant();
+  forgetSavedSession();
   // Re-render the underlying screen when playback ends so Resume buttons and
   // Continue Watching rows reflect the new progress.
   document.addEventListener('player:closed', () => router.refresh());

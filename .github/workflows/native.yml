@@ -12,6 +12,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Read-only by default; the release job asks for what it needs.
+permissions:
+  contents: read
+
 concurrency:
   group: native-${{ github.ref }}
   cancel-in-progress: true

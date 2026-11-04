@@ -51,10 +51,13 @@ export const Storage = {
     write(KEYS.settings, { ...this.getSettings(), ...patch });
   },
 
-  // ---- stremio account auth: { authKey, email } ----
-  getAuth: () => read(KEYS.auth, null),
-  setAuth: (auth) => write(KEYS.auth, auth),
-  clearAuth: () => localStorage.removeItem(KEYS.auth),
+  // ---- stremio account session saved by 0.6.1 and earlier: { authKey,
+  // email }. Read once to end it, then removed; never written any more. ----
+  takeLegacyAuth() {
+    const auth = read(KEYS.auth, null);
+    localStorage.removeItem(KEYS.auth);
+    return auth;
+  },
 
   // ---- search history: newest first, no duplicates (case-insensitive) ----
   getSearchHistory: () => read(KEYS.searchHistory, []),
