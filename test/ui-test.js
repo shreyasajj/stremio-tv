@@ -70,7 +70,23 @@ function check(name, cond, info = '') {
     // Trailers would start during any pause and swallow the next key; the
     // trailer checks turn them on.
     localStorage.setItem('stv.settings', JSON.stringify({ trailerPreviews: 'off' }));
+    // a Stremio session saved by 0.6.1 or earlier
+    if (!sessionStorage.getItem('seeded')) {
+      localStorage.setItem('stv.auth', JSON.stringify({ authKey: 'legacyKey', email: 'old@example.com' }));
+      sessionStorage.setItem('seeded', '1');
+    }
   }, [manifest, mockAddon.BASE]);
+
+  // Offline stand-in for api.strem.io, recording what it is asked.
+  const stremioApi = [];
+  await page.route('https://api.strem.io/api/**', async (route) => {
+    const body = JSON.parse(route.request().postData() || '{}');
+    stremioApi.push({ type: body.type, authKey: body.authKey });
+    const result = body.type === 'Login' ? { authKey: 'sessionKey' }
+      : body.type === 'AddonCollectionGet' ? { addons: [{ transportUrl: `${mockAddon.BASE}/manifest.json`, manifest }] }
+      : {};
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ result }) });
+  });
 
   // Offline stand-in for YouTube's embedded player: reports "playing" to a
   // page that is listening, or an embedding error for ids starting mockBroken.
@@ -534,6 +550,21 @@ function check(name, cond, info = '') {
   const addonsText = await page.locator('.screen:not(.hidden)').textContent();
   check('addons screen lists mock addon', addonsText.includes('Mock Addon'));
   check('addons screen has add-by-URL', addonsText.includes('Add addon by URL'));
+
+  // ---- Stremio account: signed in for the import only ----
+  check('a session saved by an older version is logged out at start',
+    stremioApi.some((c) => c.type === 'Logout' && c.authKey === 'legacyKey'), JSON.stringify(stremioApi));
+  check('…and removed from storage', await page.evaluate(() => localStorage.getItem('stv.auth') === null));
+  stremioApi.length = 0;
+  const imported = await page.evaluate(async () =>
+    (await import('/ui/js/stremio-api.js')).importAccountAddons('me@example.com', 'secret').then((a) => a.length));
+  await page.waitForTimeout(200);
+  check('importing returns the account\'s addons', imported === 1, String(imported));
+  check('the import session is logged out right after',
+    JSON.stringify(stremioApi.map((c) => c.type)) === '["Login","AddonCollectionGet","Logout"]'
+      && stremioApi[2].authKey === 'sessionKey', JSON.stringify(stremioApi));
+  check('nothing about the account is stored', await page.evaluate(() =>
+    !Object.keys(localStorage).some((k) => /sessionKey|me@example\.com|secret/.test(localStorage.getItem(k)))));
   await shot('12-addons');
 
   // ---- Exit confirm on Home ----

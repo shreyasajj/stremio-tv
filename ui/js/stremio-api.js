@@ -1,5 +1,6 @@
-// Minimal api.strem.io client — used only to log in and import the
-// account's addon collection.
+// Minimal api.strem.io client — used only to import an account's addon
+// collection. The session lasts for the import alone: it is logged out right
+// after, and nothing about the account is stored.
 
 import { Storage } from './storage.js';
 
@@ -19,35 +20,28 @@ async function apiCall(path, body) {
   return data.result;
 }
 
-export async function login(email, password) {
+// Logs in, returns the account's addon collection ([{ transportUrl,
+// manifest }]) and logs out again.
+export async function importAccountAddons(email, password) {
   const result = await apiCall('login', { type: 'Login', email, password });
   if (!result || !result.authKey) throw new Error('Login failed: no auth key returned');
-  Storage.setAuth({ authKey: result.authKey, email });
-  return result;
-}
-
-export function logout() {
-  const auth = Storage.getAuth();
-  Storage.clearAuth();
-  if (auth?.authKey) {
-    apiCall('logout', { type: 'Logout', authKey: auth.authKey }).catch(() => {});
+  const { authKey } = result;
+  try {
+    const collection = await apiCall('addonCollectionGet', { type: 'AddonCollectionGet', authKey, update: true });
+    return (collection.addons || [])
+      .filter((a) => a.transportUrl && a.manifest)
+      .map((a) => ({ transportUrl: a.transportUrl, manifest: a.manifest }));
+  } finally {
+    endSession(authKey);
   }
 }
 
-export function loggedInEmail() {
-  return Storage.getAuth()?.email || null;
+function endSession(authKey) {
+  apiCall('logout', { type: 'Logout', authKey }).catch(() => {});
 }
 
-// Returns the account's addon collection: [{ transportUrl, manifest }]
-export async function fetchAccountAddons() {
-  const auth = Storage.getAuth();
-  if (!auth) throw new Error('Not logged in');
-  const result = await apiCall('addonCollectionGet', {
-    type: 'AddonCollectionGet',
-    authKey: auth.authKey,
-    update: true,
-  });
-  return (result.addons || [])
-    .filter((a) => a.transportUrl && a.manifest)
-    .map((a) => ({ transportUrl: a.transportUrl, manifest: a.manifest }));
+// Up to 0.6.1 the session was kept in localStorage: end it and forget it.
+export function forgetSavedSession() {
+  const saved = Storage.takeLegacyAuth();
+  if (saved?.authKey) endSession(saved.authKey);
 }
