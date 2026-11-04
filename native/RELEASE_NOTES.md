@@ -1,3 +1,10 @@
+### 0.6.1
+- **Smoother row changes.** Moving up or down on Home now glides the rows into place instead of jumping, and the title card fades out in step.
+- **Trailers on every Home row.** Rest on a title in any row and, once its trailer starts, the rows slide down so the title card can show it above your row. Move on and they slide back.
+- **Trailer buttons.** The Home title card has a **Trailer** button next to Play and Details, and in Discover the focused poster shows one (press Down to reach it). Both play the trailer full screen with sound; any key brings you back. Discover no longer starts trailers by itself.
+
+---
+
 ### 0.6.0
 - **Trailer previews.** Rest on a title for a few seconds and its trailer plays. On Home's first row it plays behind the title card and keeps playing while you're on Play or Details; elsewhere on Home and in Discover it fills the screen behind the title's name. Any key brings the screen back (OK also opens the title). Choose with sound, muted or off in **Settings → Trailer previews**.
 - **Rows that stay in the middle.** On Home the row you're on now slides to the middle of the screen, with the one above it still in view, all the way to the last row. On the first row (Continue Watching) the title card is back above it, with Play and Details right over the row.
