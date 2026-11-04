@@ -84,7 +84,8 @@ export async function render({ router }) {
   settingItem(
     'Trailer previews',
     `${(TRAILER_OPTIONS.find((o) => o.value === settings.trailerPreviews) || TRAILER_OPTIONS[0]).label}. ` +
-      'Resting on a title on Home or Discover for a few seconds plays its trailer from YouTube.',
+      'Resting on a title on Home for a few seconds plays its trailer from YouTube behind the title card. ' +
+      'The Trailer buttons (Home, Discover) work either way.',
     async () => {
       const chosen = await pickerModal('Trailer previews', TRAILER_OPTIONS, { selectedValue: settings.trailerPreviews });
       if (chosen !== null) {

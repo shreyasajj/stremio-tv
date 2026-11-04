@@ -162,11 +162,37 @@ function scrollIntoViewNicely(el) {
         const elTop = offsetTopWithin(el, p);
         target = elTop - (p.clientHeight - el.offsetHeight) / 2;
       }
-      p.scrollTo({ top: Math.max(0, target), behavior: 'smooth' });
+      glideTo(p, Math.max(0, target));
       break;
     }
     p = p.parentElement;
   }
+}
+
+// Vertical scrolling eases over a fixed time, frame by frame: the browser's
+// own smooth scroll is short and uneven in Qt WebEngine, so moving a row
+// looked like a jump. A new target mid-glide carries on from where it is.
+const GLIDE_MS = 450;
+const glides = new WeakMap(); // container -> running glide
+
+function glideTo(box, top) {
+  top = Math.min(top, box.scrollHeight - box.clientHeight);
+  let g = glides.get(box);
+  if (!g) {
+    if (Math.abs(box.scrollTop - top) < 1) return;
+    g = {};
+    glides.set(box, g);
+  }
+  Object.assign(g, { from: box.scrollTop, to: top, start: performance.now() });
+  if (g.frame) return;
+  const step = (now) => {
+    const t = Math.min(1, (now - g.start) / GLIDE_MS);
+    const eased = 1 - Math.pow(1 - t, 3); // ease-out cubic
+    box.scrollTo({ top: g.from + (g.to - g.from) * eased, behavior: 'instant' });
+    if (t < 1) g.frame = requestAnimationFrame(step);
+    else glides.delete(box);
+  };
+  g.frame = requestAnimationFrame(step);
 }
 
 function offsetTopWithin(el, ancestor) {
@@ -237,6 +263,9 @@ export const Nav = {
     mo.observe(document.body, { childList: true, subtree: true });
   },
   focus,
+  // Scroll el's container so el sits where focusing it would put it.
+  reveal: scrollIntoViewNicely,
+  glideTo,
   move,
   activate,
   focusables: () => focusables(currentScope()),

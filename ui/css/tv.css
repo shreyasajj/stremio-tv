@@ -325,6 +325,7 @@ h2.row-title .row-sub { color: var(--text-faint); font-weight: 500; font-size: 1
 .btn .btn-icon { display: flex; }
 .btn.primary { background: var(--accent); }
 .btn.danger { background: var(--danger); }
+.btn[hidden] { display: none; }
 .btn:focus {
   outline: none;
   background: var(--text);
@@ -461,10 +462,15 @@ button.list-item:focus .kv-label { color: rgba(10, 11, 16, .68); }
   width: calc(84vh * 16 / 9 * 1.2);
   height: calc(84vh * 1.2);
 }
-/* Past the first row the hero gives way to the rows */
-.home-screen.browsing .hero-content,
-.home-screen.browsing .hero-backdrop,
-.home-screen.browsing .hero-trailer { opacity: 0; }
+/* Past the first row the hero gives way to the rows, unless a trailer is
+   previewing there: then it returns above the focused row (now in the
+   bottom lane), without its buttons, and the rows above that fade out. */
+.home-screen.browsing:not(.previewing) .hero-content,
+.home-screen.browsing:not(.previewing) .hero-backdrop,
+.home-screen.browsing:not(.previewing) .hero-trailer { opacity: 0; transition-duration: .4s; }
+.home-screen.previewing .hero-content .btn-row { display: none; }
+.home-rows .row-section { transition: opacity .4s var(--ease); }
+.home-screen.previewing .row-section.above { opacity: 0; }
 /* The screen is three lanes, one row each. Full height so rows can slide up
    over the hero: the first row starts in the bottom lane (top padding) and
    the focused row of the others in the middle one (scroll-padding-top; the
@@ -489,6 +495,20 @@ button.list-item:focus .kv-label { color: rgba(10, 11, 16, .68); }
 .home-rows .empty-note { padding-top: var(--sp-2); }
 
 /* ---- Trailer previews ---- */
+/* Discover: the Trailer button over the focused poster */
+.meta-grid { position: relative; }
+.meta-grid .trailer-pill { /* beats .focusable:focus (position: relative) */
+  position: absolute;
+  z-index: 6; /* over the focused card */
+  height: 44px;
+  padding: 0 var(--sp-4);
+  gap: var(--sp-2);
+  font-size: 18px;
+  background: rgba(var(--bg-rgb), .8);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .5);
+}
+.meta-grid .trailer-pill:focus { background: var(--text); }
+.trailer-pill .ico { font-size: 18px; }
 .trailer-frame {
   position: absolute;
   left: 50%; top: 50%;

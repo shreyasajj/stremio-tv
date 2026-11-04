@@ -1,13 +1,12 @@
-// Trailer previews: resting on a title for a few seconds plays its YouTube
-// trailer. On Home, while the hero describes that title, it plays in the
-// hero's backdrop and the rows stay usable; anywhere else it fills the
-// screen behind the title's name, and the next key press closes it.
+// Trailers. Resting on a title on Home for a few seconds plays its YouTube
+// trailer in the hero's backdrop while the rows stay usable; the Trailer
+// buttons (Home's hero, Discover) play it full screen until the next key.
 //
 // YouTube's embedded player does the decoding. It is only revealed once it
 // reports that it is playing, so loading spinners, ads gates and "video
 // unavailable" pages never show: the artwork just stays.
 
-import { el, titleArt, factsRow } from './ui.js';
+import { el, titleArt, factsRow, toast } from './ui.js';
 import { Nav } from './nav.js';
 import { Storage } from './storage.js';
 import { cachedMeta, trailerIds } from './art.js';
@@ -65,21 +64,23 @@ function embed(host, id, { muted }, onState) {
   };
 }
 
-// Plays the first of `ids` that works in `host`; host gets .on while playing.
-// Returns { stop }.
-function play(host, ids, { onEnd }) {
-  const muted = Storage.getSettings().trailerPreviews === 'muted';
+// Plays the first of `ids` that works in `host`; host gets .on while playing
+// and onPlay() runs when it starts. onEnd(played) runs when it finishes, or
+// with false when none would play. Returns { stop }.
+function play(host, ids, { muted = false, onEnd, onPlay }) {
   let player = null;
   let giveUp = null;
   let stopped = false;
+  let played = false;
+  const end = () => onEnd(played);
   function next(i) {
-    if (i >= ids.length) { onEnd(); return; }
+    if (i >= ids.length) { end(); return; }
     clearTimeout(giveUp);
-    giveUp = setTimeout(onEnd, START_TIMEOUT_MS);
+    giveUp = setTimeout(end, START_TIMEOUT_MS);
     player = embed(host, ids[i], { muted }, (state) => {
       if (stopped) return;
-      if (state === 'playing') { clearTimeout(giveUp); host.classList.add('on'); }
-      else if (state === 'ended') onEnd();
+      if (state === 'playing') { played = true; clearTimeout(giveUp); host.classList.add('on'); onPlay?.(); }
+      else if (state === 'ended') end();
       else { player.remove(); next(i + 1); } // embedding disabled, removed, …
     });
   }
@@ -94,9 +95,14 @@ function play(host, ids, { onEnd }) {
   };
 }
 
-// Full screen: the trailer behind the title's name, over everything but
-// dialogs and the player.
-function stage(meta, ids) {
+// The Trailer buttons (Home's hero, Discover): the trailer full screen,
+// behind the title's name, over everything but dialogs and the player. Any
+// key closes it, and focus stays on the button. Returns false when the title
+// lists no trailer.
+export function playTrailer(meta) {
+  const ids = trailerIds(meta);
+  if (!ids.length) return false;
+  stopActive();
   const node = el('div', { class: 'trailer-stage' },
     el('div', { class: 'trailer-scrim' }),
     el('div', { class: 'trailer-info' },
@@ -104,23 +110,43 @@ function stage(meta, ids) {
       factsRow(meta),
       el('div', { class: 'trailer-desc', text: meta.description || '' })));
   document.getElementById('screens').after(node);
-  const playback = play(node, ids, { onEnd: () => { if (active?.node === node) stopActive(); } });
-  return {
-    node,
-    // Covering the screen once it plays; until then it is invisible.
-    covers: () => node.classList.contains('on'),
+  const self = {
     keeps: () => false,
     stop() {
       playback.stop();
+      Nav.popKeyHandler(onKey);
+      window.removeEventListener('blur', close);
+      offWindowBlur?.();
       setTimeout(() => node.remove(), FADE_MS);
     },
   };
+  const close = () => { if (active === self) stopActive(); };
+  // Until it plays the screen is still in view, so keys go on to it.
+  const onKey = (e) => {
+    const covering = node.classList.contains('on');
+    // a held OK (the press that opened it) repeats; one press = one action
+    if (e.repeat && Nav.isEnterKey(e.key)) return true;
+    close();
+    return covering;
+  };
+  const playback = play(node, ids, {
+    onEnd: (played) => {
+      if (!played && active === self) toast('This trailer can’t be played here');
+      close();
+    },
+  });
+  Nav.pushKeyHandler(onKey);
+  window.addEventListener('blur', close);
+  const offWindowBlur = window.shell?.onWindowBlur?.(close);
+  active = self;
+  return true;
 }
 
-// Watch the cards in `root`. inline(card) may return { host, keeps } to play
-// in place: `host` holds the video and keeps(el) says which focus moves leave
-// it playing. Otherwise the trailer plays full screen.
-export function trailerPreviews(root, { inline } = {}) {
+// Watch the cards in `root`: resting on one plays its trailer in place when
+// inline(card) returns { host, keeps, onPlay, onStop }. `host` holds the
+// video, keeps(el) says which focus moves leave it playing, and onPlay/onStop
+// run when it starts showing and when it ends.
+export function trailerPreviews(root, { inline }) {
   let timer = null;
   let pending = null;
 
@@ -141,19 +167,23 @@ export function trailerPreviews(root, { inline } = {}) {
     const meta = card._meta;
     const type = meta.type || card._type;
     // Catalog entries rarely list trailers; the full meta does (cached).
-    const full = { ...meta, ...(await cachedMeta(type, meta.id)), type };
-    const ids = trailerIds(full);
+    const ids = trailerIds({ ...meta, ...(await cachedMeta(type, meta.id)) });
     // Still resting here, and nothing (dialog, player) on top of the screen?
     if (pending !== card || document.activeElement !== card || Nav.scopeDepth() || !ids.length) return;
     pending = null;
+    const spot = inline(card);
+    if (!spot) return;
     stopActive();
-    const spot = inline?.(card);
-    if (spot) {
-      const playback = play(spot.host, ids, { onEnd: () => { if (active?.playback === playback) stopActive(); } });
-      active = { playback, covers: () => false, keeps: spot.keeps, stop: () => playback.stop() };
-    } else {
-      active = stage(full, ids);
-    }
+    const playback = play(spot.host, ids, {
+      muted: Storage.getSettings().trailerPreviews === 'muted',
+      onPlay: spot.onPlay,
+      onEnd: () => { if (active?.playback === playback) stopActive(); },
+    });
+    active = {
+      playback,
+      keeps: spot.keeps,
+      stop() { playback.stop(); spot.onStop?.(); },
+    };
   }
 
   function onFocus(e) {
@@ -165,15 +195,11 @@ export function trailerPreviews(root, { inline } = {}) {
     else cancel();
   }
 
-  function onKey(e) {
+  function onKey() {
     if (!root.isConnected) { detach(); return false; }
     // A press that leaves focus put (end of a row) restarts the wait.
     if (pending) schedule(pending);
-    if (!active?.covers()) return false; // focus moves decide
-    stopActive();
-    // The screen was hidden: the first press only brings it back, except
-    // OK, which also opens the title.
-    return !Nav.isEnterKey(e.key);
+    return false;
   }
 
   function onBlur() {

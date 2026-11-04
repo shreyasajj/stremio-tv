@@ -34,9 +34,10 @@ remote: arrow keys, OK, and Back are all you need.
 - **Home in three lanes** — the focused row slides to the middle of the screen with the one above
   still in view; on the first row (Continue Watching) the title card is back above it. Focused
   posters grow with a short animation, on Home and Discover alike.
-- **Trailer previews** — rest on a title for a few seconds and its trailer plays: in the title
-  card on Home's first row, or full screen elsewhere on Home and in Discover (any key returns).
-  With sound, muted or off in **Settings → Trailer previews**.
+- **Trailers** — rest on a title on Home for a few seconds and its trailer plays behind the title
+  card (on lower rows the rows slide down to make room, and back when you move on). A **Trailer**
+  button in the title card and on the focused poster in Discover plays it full screen; any key
+  returns. Previews play with sound, muted or not at all (**Settings → Trailer previews**).
 - **Continue Watching** — progress is stored locally; resume from Home, Library, or the title page.
 - **Subtitles** — embedded tracks plus subtitle addons (e.g. OpenSubtitles), with adjustable size.
 - **Search built for the remote** — the on-screen keyboard sits next to a **Top matches** list
