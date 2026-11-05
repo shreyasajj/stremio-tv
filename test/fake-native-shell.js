@@ -57,7 +57,10 @@ module.exports = function installFakeNativeShell() {
       log.push(['set', name, value]);
       if (name === 'pause') { state.pause = !!value; emit(subs.prop, 'pause', state.pause); }
     },
-    get: (name) => Promise.resolve(name === 'time-pos' ? state.time : null),
+    get: (name) => Promise.resolve(name === 'time-pos' ? state.time
+      // Our Flatpak's patched mpv has the pause-burst option.
+      : name === 'option-info/audio-spdif-pause-bursts' ? { name: 'audio-spdif-pause-bursts', type: 'Flag' }
+        : null),
     // A software-decoded 4K HEVC stream over a connection slower than its
     // bitrate, mid-stall: the stats panel should blame both.
     // Only while state.slow; otherwise a healthy stream.

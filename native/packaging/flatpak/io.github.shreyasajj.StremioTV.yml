@@ -119,6 +119,11 @@ modules:
         url: https://github.com/mpv-player/mpv.git
         tag: v0.41.0
         commit: 41f6a645068483470267271e1d09966ca3b9f413
+      # --audio-spdif-pause-bursts: valid IEC 61937 silence for passthrough
+      # (Settings → Passthrough pause). Rebase it when bumping mpv; drop it
+      # once mpv has an equivalent.
+      - type: patch
+        path: patches/mpv-spdif-pause-bursts.patch
 
   # MQTT client for the Home Assistant link: the library only (no broker,
   # clients or plugins). 2.0.x: 2.1 needs cJSON even for the library. TLS

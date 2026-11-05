@@ -12,7 +12,7 @@ import { Storage } from './storage.js';
 import { el, toast, formatTime, pickerModal, hasOpenModal, closeAllModals } from './ui.js';
 import { getSubtitles } from './addons.js';
 import {
-  MpvVideo, nativeMpvAvailable, applyAudioOutput, trackLabel, audioTrackDetails, audioOutputSummary,
+  MpvVideo, nativeMpvAvailable, applyAudioOutput, pauseBurstsSupported, trackLabel, audioTrackDetails, audioOutputSummary,
 } from './mpv-video.js';
 import { iconSvg } from './icons.js';
 import { createStatsPanel } from './stats.js';
@@ -121,7 +121,13 @@ export function openPlayer(ctx) {
   }
 
   // ---- media source ----
-  if (video.isNative) applyAudioOutput(video.mpv, Storage.getSettings());
+  if (video.isNative) {
+    const settings = Storage.getSettings();
+    applyAudioOutput(video.mpv, settings);
+    if (settings.passthroughPause === 'bursts') {
+      pauseBurstsSupported(video.mpv).then((ok) => { video.pauseBursts = ok; });
+    }
+  }
   video.src = ctx.url;
 
   // ---- video events ----

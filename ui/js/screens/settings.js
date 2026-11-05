@@ -3,7 +3,7 @@
 import { el, toast, pickerModal, confirmModal } from '../ui.js';
 import { Storage } from '../storage.js';
 import { oskPrompt } from '../keyboard.js';
-import { nativeMpvAvailable, PASSTHROUGH_PRESETS } from '../mpv-video.js';
+import { nativeMpvAvailable, PASSTHROUGH_PRESETS, pauseBurstsSupported } from '../mpv-video.js';
 import { haAvailable, statusText } from '../homeassistant.js';
 import { icon } from '../icons.js';
 
@@ -123,6 +123,29 @@ export async function render({ router }) {
         }
       }
     );
+
+    if (await pauseBurstsSupported(window.shell.mpv)) {
+      const modes = [
+        { label: 'Close the audio', value: 'close',
+          sub: 'Nothing can loop; your receiver takes a moment to pick the sound back up after you press play' },
+        { label: 'Dolby/DTS pause signal (experimental)', value: 'bursts',
+          sub: 'Sends the standard "paused" signal so the receiver stays locked and resumes instantly' },
+      ];
+      const mode = modes.find((m) => m.value === settings.passthroughPause) || modes[0];
+      settingItem(
+        'Passthrough pause',
+        `${mode.label}. What the soundbar/receiver gets while a Dolby/DTS bitstream is paused or buffering.`,
+        async () => {
+          const chosen = await pickerModal('Passthrough pause', modes, { selectedValue: mode.value });
+          if (chosen !== null) {
+            Storage.setSettings({ passthroughPause: chosen });
+            toast('Applies from the next video you play');
+            router.refresh();
+          }
+        },
+        { attrs: { 'data-setting': 'passthrough-pause' } }
+      );
+    }
   }
 
   // Home Assistant (native shell only)

@@ -208,6 +208,7 @@ function check(name, cond, info = '') {
   check('Cancel closes the search for good', (await modalCount()) === 0);
 
   await homeAssistantChecks();
+  await passthroughPauseChecks();
 
   await browser.close();
   ui.close();
@@ -415,4 +416,39 @@ function check(name, cond, info = '') {
     await page.waitForTimeout(200);
     check('HA: commands with no player open are ignored', !(await playerOpen()));
   }
+  // ---- Settings → Passthrough pause: Dolby/DTS pause signal (patched mpv) ----
+  async function passthroughPauseChecks() {
+    await page.evaluate(() => window.stremioTV.router.push('settings'));
+    const sel = '.screen:not(.hidden) [data-setting="passthrough-pause"]';
+    await page.waitForSelector(sel, { timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(300);
+    const item = await page.$(sel);
+    check('Settings offers Passthrough pause (patched mpv)', !!item);
+    check('defaulting to closing the audio', !!item && (await item.textContent()).includes('Close the audio'));
+    if (!item) return;
+    await page.evaluate((q) => document.querySelector(q).focus(), sel);
+    await press('Enter', 300);
+    await page.evaluate(() => [...document.querySelectorAll('#modal-root .list-item')].find((x) => x.textContent.includes('pause signal')).focus());
+    await press('Enter', 300);
+    check('choosing the pause signal is stored', await page.evaluate(() => JSON.parse(localStorage.getItem('stv.settings')).passthroughPause === 'bursts'));
+
+    await page.evaluate(() => window.stremioTV.router.push('detail', { type: 'movie', id: 'mock:movie1' }));
+    await page.waitForSelector('.screen:not(.hidden) .detail-title');
+    await page.waitForTimeout(300);
+    await page.evaluate(() => [...document.querySelectorAll('.screen:not(.hidden) .btn')].find((x) => /Play|Resume/.test(x.textContent)).focus());
+    await press('Enter', 300);
+    await page.waitForFunction(() => document.querySelectorAll('#modal-root .list-item').length > 0, null, { timeout: 10000 });
+    await press('Enter', 200);
+    await page.waitForTimeout(1500);
+    const log = () => page.evaluate(() => window.__fakeMpv.log.filter((l) => l[0] === 'set' && (l[1] === 'aid' || l[1] === 'audio-spdif-pause-bursts')).map((l) => `${l[1]}=${l[2]}`));
+    check('mpv gets the pause-burst option', (await log()).includes('audio-spdif-pause-bursts=true'), (await log()).slice(-4).join(' '));
+    const before = (await log()).filter((x) => x === 'aid=no').length;
+    await press('Enter', 300);
+    check('paused', await page.evaluate(() => window.__fakeMpv.state.pause === true));
+    check('with the pause signal the audio stays open', (await log()).filter((x) => x === 'aid=no').length === before, (await log()).slice(-4).join(' '));
+    await press('Enter', 200);
+    await press('Escape', 400);
+    check('player closed', !(await playerOpen()));
+  }
+
 })().catch((e) => { console.error('FATAL', e); process.exit(1); });

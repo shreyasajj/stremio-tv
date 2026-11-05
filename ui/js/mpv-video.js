@@ -15,9 +15,16 @@ export const PASSTHROUGH_PRESETS = [
   { label: 'All, incl. TrueHD (Atmos) and DTS-HD — needs HDMI eARC', value: 'ac3,eac3,dts,dts-hd,truehd' },
 ];
 
+// Our Flatpak's mpv is patched with --audio-spdif-pause-bursts; a source
+// build against the system libmpv may not have it.
+export async function pauseBurstsSupported(mpv) {
+  return !!(await mpv.get('option-info/audio-spdif-pause-bursts'));
+}
+
 export function applyAudioOutput(mpv, settings) {
   mpv.set('audio-device', settings.audioDevice || 'auto');
   mpv.set('audio-spdif', settings.audioPassthrough || '');
+  mpv.set('audio-spdif-pause-bursts', settings.passthroughPause === 'bursts');
 }
 
 // Passthrough through a sound server (PipeWire, Pulse) loops the last
@@ -56,6 +63,8 @@ export class MpvVideo extends EventTarget {
     this._userPaused = false;
     this._cachePaused = false;
     this._releasedAid = null;   // audio track id let go while paused, or null
+    // Pause bursts keep the receiver quiet and locked: nothing to let go of.
+    this.pauseBursts = false;
     this._longStall = false;    // buffering for more than STALL_RELEASE_MS
     this._stallTimer = null;
     this._unsubscribe = [
@@ -154,6 +163,7 @@ export class MpvVideo extends EventTarget {
     const halted = this._userPaused || this._longStall;
     if (halted && this._releasedAid === null) {
       const p = this.audioOut;
+      if (this.pauseBursts) return;
       if (!p || !String(p.format || '').startsWith('spdif-') || !RELEASE_AOS.has(this.currentAo)) return;
       const track = this.audioTracks().find((t) => t.selected);
       if (!track) return;
@@ -293,7 +303,8 @@ export function audioOutputSummary(video) {
   if (!p || !p.format) return 'Output: no audio device opened — check Settings → Audio output device';
   const ao = video.currentAo ? ` via ${video.currentAo}` : '';
   if (String(p.format).startsWith('spdif-')) {
-    const held = video.audioReleased ? ' (closed while paused, so it can\'t loop)' : '';
+    const held = video.audioReleased ? ' (closed while paused, so it can\'t loop)'
+      : video.pauseBursts ? ' · pause signal when paused' : '';
     return `Output: ${p.format.slice(6).toUpperCase()} bitstream passthrough${ao}${held}`;
   }
   return `Output: decoded PCM ${p['hr-channels'] || ''}${ao}`.replace(/\s+/g, ' ');
