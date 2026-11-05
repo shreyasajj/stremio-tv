@@ -15,6 +15,7 @@ import {
   MpvVideo, nativeMpvAvailable, applyAudioOutput, trackLabel, audioTrackDetails, audioOutputSummary,
 } from './mpv-video.js';
 import { iconSvg } from './icons.js';
+import { createStatsPanel } from './stats.js';
 import { publishState, setCommandHandler, IDLE_STATE } from './homeassistant.js';
 
 const SEEK_COMMIT_MS = 650;
@@ -22,6 +23,7 @@ const AUTOHIDE_MS = 5000;
 const HA_INTERVAL_MS = 15000;
 
 let session = null; // active playback session or null
+let statsWanted = false; // "Stats for nerds" stays on across videos until turned off
 
 export function isPlayerOpen() {
   return !!session;
@@ -69,10 +71,11 @@ export function openPlayer(ctx) {
     flash,
     el('div', { class: 'player-loading' })
   );
-  root.append(video.element || video, overlay);
+  const stats = createStatsPanel(video);
+  root.append(video.element || video, overlay, stats.element);
 
   const s = (session = {
-    ctx, root, video, seekBar, buttons,
+    ctx, root, video, seekBar, buttons, stats,
     mode: 'hidden',            // hidden | seek | controls
     pendingSeek: null,         // target seconds while scrubbing
     seekStreak: 0,
@@ -104,6 +107,7 @@ export function openPlayer(ctx) {
   button('subtitles', 'Subtitles', () => subtitleMenu());
   button('audio', 'Audio', () => audioMenu());
   button('speed', 'Speed', () => speedMenu());
+  button('info', 'Stats', () => toggleStats());
   if (ctx.nextVideo && ctx.onNext) {
     button('next', 'Next episode', () => {
       const next = ctx.nextVideo;
@@ -221,6 +225,13 @@ export function openPlayer(ctx) {
     bumpAutohide();
   }
   s.togglePlay = togglePlay;
+
+  function toggleStats() {
+    statsWanted = stats.toggle();
+    bumpAutohide();
+  }
+  s.toggleStats = toggleStats;
+  if (statsWanted) stats.show(true);
 
   function showFlash(icon) {
     flash.innerHTML = iconSvg(icon);
@@ -497,6 +508,7 @@ function makeKeyHandler(s) {
     if (k === 'MediaStop') { closePlayer(); return true; }
     if (k === 'MediaFastForward' || k === 'MediaTrackNext') { s.scrub(1); return true; }
     if (k === 'MediaRewind' || k === 'MediaTrackPrevious') { s.scrub(-1); return true; }
+    if (k === 'Info' || k === 'i' || k === 'I') { s.toggleStats(); return true; }
 
     // A modal (subtitle picker etc.) is open above us: let Nav drive it.
     if (hasOpenModal()) return false;
@@ -536,6 +548,7 @@ export function closePlayer() {
   try { s.saveProgress(); } catch { /* ignore */ }
   clearInterval(s.saveTimer);
   clearInterval(s.haTimer);
+  s.stats.destroy();
   setCommandHandler(null);
   publishState(IDLE_STATE);
   clearTimeout(s.autohideTimer);

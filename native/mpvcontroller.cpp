@@ -90,6 +90,12 @@ MpvController::MpvController(QObject *parent) : QObject(parent), core_(std::make
     mpv_set_option_string(h, "sub-auto", "no");
     mpv_set_option_string(h, "audio-display", "no");
     mpv_set_option_string(h, "terminal", "no");
+    // Keep the audio device fed with silence while paused or buffering
+    // instead of stopping it. Many HDMI/ALSA drivers (and AV receivers on
+    // passthrough) don't stop cleanly: they loop the last buffer as a harsh
+    // repeating beep until audio resumes. Override with
+    // STREMIO_TV_MPV_OPTIONS="audio-stream-silence=no".
+    mpv_set_option_string(h, "audio-stream-silence", "yes");
     // Diagnostics on the box, without a rebuild:
     //   STREMIO_TV_MPV_LOG=v                     more mpv logging (v, debug, …)
     //   STREMIO_TV_MPV_OPTIONS="hwdec=no,vo=…"   extra options, applied last
@@ -182,6 +188,18 @@ QVariant MpvController::getProperty(const QString &name) const {
     QVariant v = mpvNodeToVariant(&node);
     mpv_free_node_contents(&node);
     return v;
+}
+
+QVariantMap MpvController::getProperties(const QStringList &names) const {
+    QVariantMap result;
+    if (!available()) return result;
+    for (const QString &name : names) {
+        mpv_node node;
+        if (mpv_get_property(core_->handle, name.toUtf8().constData(), MPV_FORMAT_NODE, &node) < 0) continue;
+        result.insert(name, mpvNodeToVariant(&node));
+        mpv_free_node_contents(&node);
+    }
+    return result;
 }
 
 void MpvController::handlePropertyChange(const QString &name, const QVariant &value) {

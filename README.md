@@ -29,7 +29,11 @@ remote: arrow keys, OK, and Back are all you need.
 - **YouTube-TV-style player**:
   - **OK** → play/pause
   - **Left/Right** → seek −10s/+10s; repeated presses accelerate to 30s/60s/120s steps
-  - **Up/Down** → show the control row (Pause · Subtitles · Audio · Speed · Next episode)
+  - **Up/Down** → show the control row (Pause · Subtitles · Audio · Speed · Stats · Next episode)
+  - **Stats** (or the remote's **Info** key) → *Stats for nerds*, a see-through panel over the
+    video: resolution, codec, GPU or CPU decoding, dropped frames, connection speed against the
+    stream's bitrate, buffer health, stalls, CPU/GPU load, and a line saying whether buffering is
+    down to the network or the box
   - **Back** → hide controls / stop playback (progress is saved)
 - **Home in three lanes** — the focused row slides to the middle of the screen with the one above
   still in view; on the first row (Continue Watching) the title card is back above it. Focused
@@ -88,6 +92,7 @@ server URL** (e.g. `http://127.0.0.1:11470`).
 | Enter / OK / Select                   | Activate / play-pause                     |
 | Esc / Backspace / Back                | Go back / hide player controls / exit app |
 | Play-Pause / Stop / FF / RW media keys| Player control from anywhere              |
+| Info / I                              | Stats for nerds (in player)               |
 
 Most TV remotes (HDMI-CEC via `cec-ctl`, Bluetooth remotes, air mice) present these as
 regular keyboard keys, which is all the app listens for.
