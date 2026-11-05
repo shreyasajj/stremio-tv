@@ -117,11 +117,12 @@ modules:
     sources:
       - type: git
         url: https://github.com/mpv-player/mpv.git
-        tag: v0.41.0
-        commit: 41f6a645068483470267271e1d09966ca3b9f413
+        tag: v0.42.0
+        commit: b0841e8c4d156b8403dc1876c4cbd9011eb583f3
       # --audio-spdif-pause-bursts: valid IEC 61937 silence for passthrough
-      # (Settings → Passthrough pause). Rebase it when bumping mpv; drop it
-      # once mpv has an equivalent.
+      # (Settings → Passthrough pause). Upstream: mpv-player/mpv#18771
+      # (request #18770): the same two commits, on v0.42.0. Drop it once mpv
+      # has it.
       - type: patch
         path: patches/mpv-spdif-pause-bursts.patch
 

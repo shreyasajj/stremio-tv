@@ -1,3 +1,8 @@
+### 0.8.1
+- **Built-in player updated to mpv 0.42.0.** Among its fixes, Dolby TrueHD passthrough recovers cleanly after seeking. The Dolby/DTS pause signal from 0.8.0 is carried over to it, and is now also proposed to the mpv project ([mpv#18771](https://github.com/mpv-player/mpv/pull/18771)).
+
+---
+
 ### 0.8.0
 - **Dolby/DTS pause signal (experimental).** New in *Settings → Passthrough pause*: instead of closing the audio while a Dolby/DTS bitstream is paused or buffering, the app can send the standard "paused" signal (IEC 61937 pause bursts, as Kodi does). Your receiver then stays locked and goes quiet, with no loop and no wait for the sound to come back when you press play. It's off by default while it's being tried on more receivers; if yours clicks, drops out or loops with it, switch back to **Close the audio**.
 - The app's built-in mpv now carries a small patch that adds this. We'll offer it to the mpv project too.
