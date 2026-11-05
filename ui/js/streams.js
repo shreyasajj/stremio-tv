@@ -36,7 +36,7 @@ function streamLabel(addon, stream) {
 let activeFlow = null;
 
 // Entry point. meta required; video required for series (null for movies).
-export async function playFlow(meta, video, { resumeTime, preferBinge } = {}) {
+export async function playFlow(meta, video, { resumeTime, preferBinge, hint } = {}) {
   if (activeFlow) return;
   const flow = (activeFlow = { cancelled: false, ctrl: new AbortController() });
   const finish = () => { if (activeFlow === flow) activeFlow = null; };
@@ -76,7 +76,7 @@ export async function playFlow(meta, video, { resumeTime, preferBinge } = {}) {
     }
   }
 
-  pickStream(meta, video, streams, { resumeTime, onDone: finish });
+  pickStream(meta, video, streams, { resumeTime, hint, onDone: finish });
 }
 
 // "Finding streams…": focus moves into the dialog itself (not a button), so
@@ -104,11 +104,12 @@ function openLoadingModal(text, onCancel) {
   };
 }
 
-function pickStream(meta, video, streams, { resumeTime, onDone } = {}) {
+function pickStream(meta, video, streams, { resumeTime, hint, onDone } = {}) {
   const body = el('div', { class: 'modal-body' });
   const label = videoLabel(video);
   const modal = el('div', { class: 'modal', style: 'min-width: 900px' },
     el('div', { class: 'modal-title', text: `Streams — ${meta.name}${label ? ' · ' + label : ''}` }),
+    hint ? el('div', { class: 'modal-hint', text: hint }) : null,
     body);
   const handle = openModal(modal, { onClose: () => onDone && onDone() });
 
@@ -150,6 +151,7 @@ function startPlayback(meta, video, entry, { resumeTime } = {}) {
     resumeTime,
     nextVideo: next,
     onNext: (nextVideo) => playFlow(meta, nextVideo, { preferBinge: binge }),
+    onSwitchStream: (time, hint) => playFlow(meta, video, { resumeTime: time, hint }),
   });
 }
 

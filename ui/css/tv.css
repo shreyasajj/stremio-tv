@@ -960,6 +960,8 @@ html.native-video-playing #screens { visibility: hidden; }
 .stats-value { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .stats-graph { display: block; width: 240px; height: 34px; margin: 2px 0 4px; background: rgba(255, 255, 255, .06); }
 
+.modal-hint { color: var(--text-dim); font-size: 19px; margin: calc(-1 * var(--sp-2)) 0 var(--sp-4); }
+
 /* ---- Toasts ---- */
 #toast-root {
   position: fixed;

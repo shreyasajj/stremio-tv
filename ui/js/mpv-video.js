@@ -20,6 +20,16 @@ export function applyAudioOutput(mpv, settings) {
   mpv.set('audio-spdif', settings.audioPassthrough || '');
 }
 
+// Passthrough through a sound server (PipeWire, Pulse) loops the last
+// fraction of a second when the bitstream stops: the stream stays linked
+// with nothing to send, and the HDMI sink can't fill an IEC 61937 stream with
+// silence. While paused or buffering the audio track is let go instead, which
+// closes the output just like stopping does, and taken back on resume.
+// The receiver needs a moment to relock afterwards, so a buffering stall only
+// lets go once it has lasted a while; a pause lets go at once.
+const RELEASE_AOS = new Set(['pipewire', 'pulse']);
+const STALL_RELEASE_MS = 2000;
+
 export class MpvVideo extends EventTarget {
   constructor() {
     super();
@@ -43,6 +53,11 @@ export class MpvVideo extends EventTarget {
     // Mid-playback stalls (mpv paused for cache), for the stats panel.
     this.stalls = { count: 0, seconds: 0 };
     this._stallStart = 0;
+    this._userPaused = false;
+    this._cachePaused = false;
+    this._releasedAid = null;   // audio track id let go while paused, or null
+    this._longStall = false;    // buffering for more than STALL_RELEASE_MS
+    this._stallTimer = null;
     this._unsubscribe = [
       this.mpv.onProperty((name, value) => this._onProperty(name, value)),
       this.mpv.onFileLoaded(() => this._onFileLoaded()),
@@ -65,6 +80,11 @@ export class MpvVideo extends EventTarget {
     this._cacheEnd = 0;
     this.stalls = { count: 0, seconds: 0 };
     this._stallStart = 0;
+    this._userPaused = false;
+    this._cachePaused = false;
+    this._releasedAid = null;
+    this._longStall = false;
+    clearTimeout(this._stallTimer);
     // Track choices and speed are global in mpv; reset them per file.
     this.mpv.set('aid', 'auto');
     this.mpv.set('sid', 'auto');
@@ -107,6 +127,7 @@ export class MpvVideo extends EventTarget {
   load() {}
 
   destroy() {
+    clearTimeout(this._stallTimer);
     this._unsubscribe.forEach((off) => off());
     this._unsubscribe = [];
     this._src = '';
@@ -121,7 +142,29 @@ export class MpvVideo extends EventTarget {
   audioTracks() { return this.tracks.filter((t) => t.type === 'audio'); }
 
   selectSubtitle(id) { this.mpv.set('sid', id == null ? 'no' : String(id)); }
-  selectAudio(id) { this.mpv.set('aid', String(id)); }
+  selectAudio(id) {
+    // Chosen while let go: it's what comes back on resume.
+    if (this._releasedAid !== null) this._releasedAid = String(id);
+    else this.mpv.set('aid', String(id));
+  }
+
+  get audioReleased() { return this._releasedAid !== null; }
+
+  _updateAudioRelease() {
+    const halted = this._userPaused || this._longStall;
+    if (halted && this._releasedAid === null) {
+      const p = this.audioOut;
+      if (!p || !String(p.format || '').startsWith('spdif-') || !RELEASE_AOS.has(this.currentAo)) return;
+      const track = this.audioTracks().find((t) => t.selected);
+      if (!track) return;
+      this._releasedAid = String(track.id);
+      this.mpv.set('aid', 'no');
+    } else if (!halted && this._releasedAid !== null) {
+      const aid = this._releasedAid;
+      this._releasedAid = null;
+      this.mpv.set('aid', aid);
+    }
+  }
   addSubtitle(url, title, lang) {
     const existing = this.subtitleTracks().find((t) => t.external && t['external-filename'] === url);
     if (existing) this.selectSubtitle(existing.id);
@@ -137,6 +180,8 @@ export class MpvVideo extends EventTarget {
     switch (name) {
       case 'pause':
         this.paused = !!value;
+        this._userPaused = !!value;
+        this._updateAudioRelease();
         this._emit(value ? 'pause' : 'play');
         if (!value && this._loaded && !this._buffering) this._emit('playing');
         break;
@@ -157,6 +202,17 @@ export class MpvVideo extends EventTarget {
           if (this._loaded) this.stalls.seconds += (performance.now() - this._stallStart) / 1000;
           this._stallStart = 0;
         }
+        this._cachePaused = !!value;
+        clearTimeout(this._stallTimer);
+        this._longStall = false;
+        if (value) {
+          this._stallTimer = setTimeout(() => {
+            if (!this._cachePaused) return;
+            this._longStall = true;
+            this._updateAudioRelease();
+          }, STALL_RELEASE_MS);
+        }
+        this._updateAudioRelease();
         // falls through
       case 'seeking':
         if (!this._loaded) break;
@@ -170,9 +226,12 @@ export class MpvVideo extends EventTarget {
         this.tracks = Array.isArray(value) ? value : [];
         break;
       case 'audio-out-params':
+        // Keep showing the real output while it's let go for a pause.
+        if (this._releasedAid !== null && !(value && value.format)) break;
         this.audioOut = value && typeof value === 'object' ? value : null;
         break;
       case 'current-ao':
+        if (this._releasedAid !== null && !value) break;
         this.currentAo = value || '';
         break;
     }
@@ -234,7 +293,8 @@ export function audioOutputSummary(video) {
   if (!p || !p.format) return 'Output: no audio device opened — check Settings → Audio output device';
   const ao = video.currentAo ? ` via ${video.currentAo}` : '';
   if (String(p.format).startsWith('spdif-')) {
-    return `Output: ${p.format.slice(6).toUpperCase()} bitstream passthrough${ao}`;
+    const held = video.audioReleased ? ' (closed while paused, so it can\'t loop)' : '';
+    return `Output: ${p.format.slice(6).toUpperCase()} bitstream passthrough${ao}${held}`;
   }
   return `Output: decoded PCM ${p['hr-channels'] || ''}${ao}`.replace(/\s+/g, ' ');
 }

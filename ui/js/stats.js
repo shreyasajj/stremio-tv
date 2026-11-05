@@ -8,6 +8,7 @@
 
 import { el } from './ui.js';
 import { audioOutputSummary } from './mpv-video.js';
+import { estimateCatchUp, describeCatchUp, RateMeter, streamBitrate } from './catchup.js';
 
 const POLL_MS = 1000;
 const HISTORY = 60;          // samples kept for the sparklines (1 per second)
@@ -21,7 +22,7 @@ const PROPS = [
   'frame-drop-count', 'decoder-frame-drop-count', 'vo-delayed-frame-count', 'avsync',
   'video-bitrate', 'audio-bitrate', 'audio-codec-name', 'audio-params',
   'demuxer-cache-state', 'demuxer-cache-duration', 'cache-speed', 'paused-for-cache', 'cache-buffering-state',
-  'eof-reached',
+  'eof-reached', 'file-size', 'duration', 'time-pos', 'demuxer-max-bytes',
 ];
 
 const num = (v) => (typeof v === 'number' && isFinite(v) ? v : null);
@@ -88,6 +89,7 @@ export function createStatsPanel(video) {
   const history = { net: [], buf: [] };
   const drops = [];           // [{ dec, vo }] per sample, for the WINDOW delta
   let peakNet = 0;
+  const meter = new RateMeter();
   let timer = null;
   let busy = false;
 
@@ -138,6 +140,12 @@ export function createStatsPanel(video) {
     const cacheFull = !!cache.idle && !cache.underrun;
     const bufferS = num(cache['cache-duration']) ?? num(p['demuxer-cache-duration']);
     const needBps = (num(p['video-bitrate']) ?? 0) + (num(p['audio-bitrate']) ?? 0);
+    meter.add(cache);
+    const catchUp = estimateCatchUp({
+      rateBps: meter.bps, bitrateBps: streamBitrate(p),
+      remainingS: (num(p.duration) ?? 0) - (num(p['time-pos']) ?? 0), durationS: num(p.duration),
+      bufferedS: bufferS ?? 0, cacheBytes: num(p['demuxer-max-bytes']),
+    });
     if (netBps != null) { peakNet = Math.max(peakNet, netBps); push(history.net, netBps); }
     if (bufferS != null) push(history.buf, bufferS);
 
@@ -177,6 +185,7 @@ export function createStatsPanel(video) {
       row('Bitrate', needBps ? `${mbps(needBps)} (video ${mbps(num(p['video-bitrate']) ?? 0)}, audio ${mbps(num(p['audio-bitrate']) ?? 0)})` : ''),
       row('Connection', conn, conn && netBps != null ? netGraph : null),
       row('Buffer health', bufferS != null ? `${bufferS.toFixed(1)} s${num(cache['fw-bytes']) ? ` · ${mib(cache['fw-bytes'])}` : ''}` : '', bufferS != null ? bufGraph : null),
+      row('Plays through', meter.count >= 3 ? describeCatchUp(catchUp) : ''),
       row('Stalls', `${stalls.count}${stalls.count ? ` (${stalls.seconds.toFixed(1)} s total)` : ''}${p['paused-for-cache'] ? ` · buffering ${num(p['cache-buffering-state']) ?? 0}%` : ''}`),
       row('A/V sync', num(p.avsync) != null ? `${(p.avsync * 1000).toFixed(0)} ms` : ''),
       row('Audio', [(p['audio-codec-name'] || '').toUpperCase(), aParams['hr-channels'], aParams.samplerate ? `${aParams.samplerate / 1000} kHz` : ''].filter(Boolean).join(' · ')),
