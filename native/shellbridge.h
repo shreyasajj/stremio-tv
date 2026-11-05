@@ -39,6 +39,10 @@ public:
     // Test hook (STREMIO_TV_TEST=1): save the composited window — video
     // included — as a PNG.
     Q_INVOKABLE bool saveScreenshot(const QString &path);
+    // Machine load for the stats overlay, measured since the previous call:
+    // cpu (all cores, %), process (this app incl. mpv, % of one core),
+    // cores, and gpu (% busy, where the driver reports it, e.g. amdgpu).
+    Q_INVOKABLE QVariantMap systemStats();
 
 signals:
     void proxyFetchDone(int requestId, const QVariantMap &result);
@@ -52,5 +56,7 @@ private:
     bool inhibitPending_ = false;
     bool wantInhibit_ = false;
     bool videoLayer_ = false;
+    quint64 lastCpuTotal_ = 0, lastCpuIdle_ = 0, lastProcTicks_ = 0;
+    qint64 lastStatsMs_ = 0;
     void updateInhibit();
 };

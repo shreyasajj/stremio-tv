@@ -10,6 +10,7 @@
 #include <QSet>
 #include <QTimer>
 #include <QVariant>
+#include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
 #include <memory>
 #include <mutex>
@@ -45,6 +46,9 @@ public:
     // Set an mpv property/option at runtime (bool, number or string).
     Q_INVOKABLE void setOption(const QString &name, const QVariant &value);
     Q_INVOKABLE QVariant getProperty(const QString &name) const;
+    // Several properties in one round trip (stats overlay); unavailable
+    // ones are left out.
+    Q_INVOKABLE QVariantMap getProperties(const QStringList &names) const;
 
 signals:
     void propertyChanged(const QString &name, const QVariant &value);

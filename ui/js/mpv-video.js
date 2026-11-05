@@ -40,6 +40,9 @@ export class MpvVideo extends EventTarget {
     this._src = '';
     this._loaded = false;
     this._buffering = true;
+    // Mid-playback stalls (mpv paused for cache), for the stats panel.
+    this.stalls = { count: 0, seconds: 0 };
+    this._stallStart = 0;
     this._unsubscribe = [
       this.mpv.onProperty((name, value) => this._onProperty(name, value)),
       this.mpv.onFileLoaded(() => this._onFileLoaded()),
@@ -60,6 +63,8 @@ export class MpvVideo extends EventTarget {
     this.duration = NaN;
     this._time = 0;
     this._cacheEnd = 0;
+    this.stalls = { count: 0, seconds: 0 };
+    this._stallStart = 0;
     // Track choices and speed are global in mpv; reset them per file.
     this.mpv.set('aid', 'auto');
     this.mpv.set('sid', 'auto');
@@ -145,6 +150,14 @@ export class MpvVideo extends EventTarget {
         this._cacheEnd = typeof value === 'number' ? value : 0;
         break;
       case 'paused-for-cache':
+        if (value && !this._stallStart) {
+          this._stallStart = performance.now();
+          if (this._loaded) this.stalls.count++;
+        } else if (!value && this._stallStart) {
+          if (this._loaded) this.stalls.seconds += (performance.now() - this._stallStart) / 1000;
+          this._stallStart = 0;
+        }
+        // falls through
       case 'seeking':
         if (!this._loaded) break;
         this._buffering = !!value;

@@ -50,10 +50,12 @@
         onWindowBlur: listeners(native.windowBlur),
         onWindowFocus: listeners(native.windowFocus),
         saveScreenshot: (path) => new Promise((resolve) => native.saveScreenshot(String(path), resolve)),
+        systemStats: () => new Promise((resolve) => native.systemStats(resolve)),
         mpv: mpv.available ? {
           command: (...args) => mpv.command(args.map(String)),
           set: (name, value) => mpv.setOption(name, value),
           get: (name) => new Promise((resolve) => mpv.getProperty(name, resolve)),
+          getMany: (names) => new Promise((resolve) => mpv.getProperties(names.map(String), resolve)),
           onProperty: listeners(mpv.propertyChanged),
           onFileLoaded: listeners(mpv.fileLoaded),
           onEndFile: listeners(mpv.endFile),

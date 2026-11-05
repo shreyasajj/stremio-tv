@@ -110,6 +110,31 @@ function check(name, cond, info = '') {
   await press('Enter', 200);
   check('OK resumes mpv', await page.evaluate(() => window.__fakeMpv.state.pause === false));
 
+  // ---- stats for nerds: Info key toggles a panel that names the bottleneck ----
+  const tBefore = await page.evaluate(() => window.__fakeMpv.state.time);
+  await press('i', 2300);
+  const tAfter = await page.evaluate(() => window.__fakeMpv.state.time);
+  check('video keeps playing under the stats panel', tAfter - tBefore > 1.5 && !(await page.evaluate(() => window.__fakeMpv.state.pause)), `${tBefore} -> ${tAfter}`);
+  check('the panel never takes focus or input', await page.evaluate(() => {
+    const p = document.querySelector('.stats-panel');
+    return getComputedStyle(p).pointerEvents === 'none' && !p.contains(document.activeElement);
+  }));
+  const stats = await page.evaluate(() => {
+    const p = document.querySelector('.stats-panel');
+    return p && !p.classList.contains('hidden') ? p.textContent : '';
+  });
+  check('Info key opens Stats for nerds', stats.includes('Stats for nerds'));
+  check('stats show the decoder path', stats.includes('Software — CPU'), stats.slice(0, 200));
+  check('stats blame the CPU decoder', /software decoding HEVC 3840×2160 on the CPU/.test(stats));
+  check('stats blame the slow network', /downloading at 20\.0 Mbps, the stream needs 40\.6 Mbps/.test(stats));
+  await shot('n3b-stats');
+  await press('Enter', 200);
+  check('OK still pauses with the panel open', await page.evaluate(() => window.__fakeMpv.state.pause === true));
+  await press('Enter', 200);
+  check('and resumes', await page.evaluate(() => window.__fakeMpv.state.pause === false));
+  await press('i', 200);
+  check('Info key closes Stats for nerds', await page.evaluate(() => document.querySelector('.stats-panel').classList.contains('hidden')));
+
   // ---- Back during the search cancels it cleanly ----
   await press('Escape', 400);
   check('one Back press exits the player', !(await playerOpen()));

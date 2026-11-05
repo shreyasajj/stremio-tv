@@ -1,3 +1,10 @@
+### 0.7.0
+- **No more beeping while buffering or paused.** On some HDMI setups (and receivers playing Dolby/DTS passthrough) pausing, or the video stopping to buffer, left a harsh beep looping until playback resumed. The audio output now gets silence instead.
+- **Stats for nerds.** Press **Stats** in the player controls, or the remote's **Info** key, for a see-through panel over the video. It shows resolution and codec, whether the GPU or the CPU is decoding, dropped frames, connection speed next to the bitrate the stream needs, buffer health and connection graphs, stalls, and CPU/GPU load. A line at the top says what's wrong: a network that's too slow, a decoder or GPU that can't keep up, or "playing smoothly". The video keeps playing and the remote works as usual while it's open. It stays on for the next video until you turn it off.
+- Your Stremio account is no longer remembered after importing addons. You sign in only for the import, and a sign-in saved by 0.6.1 or earlier is ended when the app starts.
+
+---
+
 ### 0.6.1
 - **Smoother row changes.** Moving up or down on Home now glides the rows into place instead of jumping, and the title card fades out in step.
 - **Trailers on every Home row.** Rest on a title in any row and, once its trailer starts, the rows slide down so the title card can show it above your row. Move on and they slide back.

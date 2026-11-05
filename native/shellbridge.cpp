@@ -1,7 +1,9 @@
 #include "shellbridge.h"
 #include <QClipboard>
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDir>
+#include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
 #include <QGuiApplication>
@@ -9,6 +11,7 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QQuickWindow>
+#include <unistd.h>
 #ifdef STREMIO_TV_HAVE_DBUS
 #include <QDBusConnection>
 #include <QDBusMessage>
@@ -97,6 +100,49 @@ void ShellBridge::quit() {
 void ShellBridge::setPlaybackActive(bool playing) {
     wantInhibit_ = playing;
     updateInhibit();
+}
+
+QVariantMap ShellBridge::systemStats() {
+    QVariantMap out;
+    const long cores = sysconf(_SC_NPROCESSORS_ONLN);
+    const long hz = sysconf(_SC_CLK_TCK);
+    out.insert(QStringLiteral("cores"), qlonglong(cores));
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+
+    // /proc/stat "cpu  user nice system idle iowait irq softirq steal …"
+    const QStringList cpu = readText(QStringLiteral("/proc/stat")).section(u'\n', 0, 0)
+        .split(u' ', Qt::SkipEmptyParts);
+    quint64 total = 0, idle = 0;
+    for (int i = 1; i < cpu.size() && i <= 8; ++i) {
+        const quint64 v = cpu.at(i).toULongLong();
+        total += v;
+        if (i == 4 || i == 5) idle += v;
+    }
+    // /proc/self/stat: utime and stime are fields 14 and 15; the command
+    // name in parentheses may contain spaces, so count from the last ')'.
+    const QString self = readText(QStringLiteral("/proc/self/stat"));
+    const QStringList fields = self.mid(self.lastIndexOf(u')') + 2).split(u' ', Qt::SkipEmptyParts);
+    const quint64 procTicks = fields.size() > 12 ? fields.at(11).toULongLong() + fields.at(12).toULongLong() : 0;
+
+    if (lastStatsMs_ && total > lastCpuTotal_) {
+        const double dTotal = double(total - lastCpuTotal_);
+        out.insert(QStringLiteral("cpu"), 100.0 * (1.0 - double(idle - lastCpuIdle_) / dTotal));
+        const double seconds = (nowMs - lastStatsMs_) / 1000.0;
+        if (seconds > 0 && hz > 0)
+            out.insert(QStringLiteral("process"), 100.0 * double(procTicks - lastProcTicks_) / hz / seconds);
+    }
+    lastCpuTotal_ = total;
+    lastCpuIdle_ = idle;
+    lastProcTicks_ = procTicks;
+    lastStatsMs_ = nowMs;
+
+    // GPU busy %, where the kernel driver exposes it (amdgpu does).
+    QDirIterator cards(QStringLiteral("/sys/class/drm"), { QStringLiteral("card?") }, QDir::Dirs | QDir::System);
+    while (cards.hasNext()) {
+        const QString busy = readText(cards.next() + QStringLiteral("/device/gpu_busy_percent")).trimmed();
+        if (!busy.isEmpty()) { out.insert(QStringLiteral("gpu"), busy.toInt()); break; }
+    }
+    return out;
 }
 
 void ShellBridge::setVideoLayer(bool visible) {

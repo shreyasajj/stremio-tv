@@ -55,6 +55,16 @@ module.exports = function installFakeNativeShell() {
       if (name === 'pause') { state.pause = !!value; emit(subs.prop, 'pause', state.pause); }
     },
     get: (name) => Promise.resolve(name === 'time-pos' ? state.time : null),
+    // A software-decoded 4K HEVC stream over a connection slower than its
+    // bitrate, mid-stall: the stats panel should blame both.
+    getMany: (names) => Promise.resolve(Object.fromEntries(Object.entries({
+      'stream-open-filename': state.file, 'file-format': 'mkv', 'video-format': 'hevc',
+      'video-params': { w: 3840, h: 2160, pixelformat: 'yuv420p10', primaries: 'bt.2020', gamma: 'pq' },
+      hwdec: 'auto-safe', 'hwdec-current': 'no', 'estimated-vf-fps': 23.976,
+      'decoder-frame-drop-count': (state.drops = (state.drops || 0) + 3), 'frame-drop-count': 0,
+      'video-bitrate': 40e6, 'audio-bitrate': 640e3, 'paused-for-cache': true,
+      'demuxer-cache-state': { 'cache-duration': 0.4, 'raw-input-rate': 2.5e6, 'fw-bytes': 2e6 },
+    }).filter(([k]) => names.includes(k)))),
     onProperty: on(subs.prop),
     onFileLoaded: on(subs.loaded),
     onEndFile: on(subs.end),
@@ -111,6 +121,7 @@ module.exports = function installFakeNativeShell() {
     testMode: true,
     quit: () => {},
     setPlaybackActive: () => {},
+    systemStats: () => Promise.resolve({ cpu: 97, process: 380, cores: 4 }),
     onWindowBlur: () => () => {},
     onWindowFocus: () => () => {},
     mpv,

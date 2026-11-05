@@ -923,6 +923,43 @@ html.native-video-playing #screens { visibility: hidden; }
 @keyframes spin-centered { to { transform: translate(-50%, -50%) rotate(360deg); } }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* "Stats for nerds": a see-through layer floating over the video, top-right
+   (clear of the title); never takes focus or input. The text shadow keeps
+   it legible over bright scenes. */
+.stats-panel {
+  position: absolute;
+  top: calc(var(--safe-y) + var(--sp-2));
+  right: var(--safe-x);
+  width: 760px;
+  max-width: calc(100vw - 2 * var(--safe-x));
+  padding: var(--sp-4) var(--sp-5);
+  background: rgba(0, 0, 0, .42);
+  border-radius: var(--r-sm);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .9), 0 0 6px rgba(0, 0, 0, .6);
+  font-size: 17px;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  z-index: 2;
+}
+.stats-panel.hidden { display: none; }
+.stats-head { font-weight: 700; margin-bottom: var(--sp-2); }
+.stats-verdict {
+  white-space: pre-line;
+  font-weight: 600;
+  padding: var(--sp-2) var(--sp-3);
+  margin-bottom: var(--sp-3);
+  border-radius: 6px;
+  border-left: 4px solid var(--ok);
+  background: rgba(79, 208, 138, .1);
+}
+.stats-verdict.warn { border-color: #f2b84b; background: rgba(242, 184, 75, .1); }
+.stats-verdict.bad { border-color: var(--danger); background: rgba(239, 91, 91, .12); }
+.stats-row { display: flex; gap: var(--sp-4); }
+.stats-label { flex: 0 0 160px; color: #c9cddb; text-align: right; }
+.stats-value { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.stats-graph { display: block; width: 240px; height: 34px; margin: 2px 0 4px; background: rgba(255, 255, 255, .06); }
+
 /* ---- Toasts ---- */
 #toast-root {
   position: fixed;
