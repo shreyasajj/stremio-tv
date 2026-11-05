@@ -79,6 +79,11 @@ NATIVE_BIN=native/build/stremio-tv-native npm run test:native
    selected track should read `Output: EAC3 bitstream passthrough`. That line is
    mpv's real output format. The soundbar's display is the final word on Atmos.
 4. In passthrough, set the volume on the TV or soundbar; the app can't scale a bitstream.
+5. *Settings → Passthrough pause* picks what the receiver gets while a bitstream is paused or
+   buffering. **Close the audio** (default) closes the output so nothing can loop. **Dolby/DTS
+   pause signal** (experimental) sends IEC 61937 pause bursts so the receiver stays locked and
+   resumes instantly. That needs `--audio-spdif-pause-bursts`, which our Flatpak's mpv is patched
+   with (`packaging/flatpak/patches/`). A build against a stock libmpv doesn't show the setting.
 
 ## Environment variables
 

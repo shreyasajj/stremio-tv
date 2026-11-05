@@ -31,6 +31,7 @@ export const DEFAULT_SETTINGS = {
   // Native (libmpv) shell only:
   audioDevice: 'auto',     // mpv audio-device, e.g. alsa/hdmi:CARD=PCH,DEV=0
   audioPassthrough: '',    // mpv audio-spdif codec list; '' = decode to PCM
+  passthroughPause: 'close', // while paused: close the output | 'bursts' (Dolby/DTS pause signal, patched mpv)
   // Home Assistant over MQTT (native shell only); off until turned on.
   haEnabled: false,
   haHost: '',              // broker address, e.g. 192.168.1.10

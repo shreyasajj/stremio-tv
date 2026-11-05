@@ -1,3 +1,9 @@
+### 0.8.0
+- **Dolby/DTS pause signal (experimental).** New in *Settings → Passthrough pause*: instead of closing the audio while a Dolby/DTS bitstream is paused or buffering, the app can send the standard "paused" signal (IEC 61937 pause bursts, as Kodi does). Your receiver then stays locked and goes quiet, with no loop and no wait for the sound to come back when you press play. It's off by default while it's being tried on more receivers; if yours clicks, drops out or loops with it, switch back to **Close the audio**.
+- The app's built-in mpv now carries a small patch that adds this. We'll offer it to the mpv project too.
+
+---
+
 ### 0.7.1
 - **No more looping audio on pause with Dolby passthrough over PipeWire.** With *Surround passthrough* on and the default audio device, pausing could replay the last half second of sound over and over. The audio output is now closed while paused and reopened when you press play. Your receiver may take a moment to pick the sound back up. Short buffering hiccups leave it alone; a stall that lasts more than 2 seconds closes it too.
 - **"This stream is too big for your connection."** When a stream keeps stopping to buffer, the player compares your download speed with the stream's bitrate. If no reasonable wait would let it play through, it offers once to find a smaller stream. The stream list then shows the largest file size your connection plays smoothly, and the new stream starts where you were.

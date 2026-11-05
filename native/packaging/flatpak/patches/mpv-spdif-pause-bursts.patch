@@ -1,0 +1,235 @@
+From f2a94a781e4e0022092fc01f1af5f7f49a4f9e2f Mon Sep 17 00:00:00 2001
+From: shreyasajj <shreyas.github@proton.me>
+Date: Thu, 5 Nov 2026 13:25:47 -0600
+Subject: [PATCH] ao: fill spdif silence with IEC 61937 pause bursts
+
+Zero bytes are not a valid IEC 61937 stream: some receivers loop the
+last audio they decoded, or lose sync and take a moment to lock again.
+--audio-spdif-pause-bursts fills spdif silence (paused with
+--audio-stream-silence, underruns, padding) with pause bursts instead,
+at the minimum repetition period (4 frames for 192 kHz formats, 3
+otherwise). With ao=pipewire, buffers are then always queued full: the
+sink can't fill a bitstream with silence and replayed stale data.
+---
+ DOCS/man/options.rst    | 10 +++++++
+ audio/out/ao.c          |  2 ++
+ audio/out/ao.h          |  2 ++
+ audio/out/ao_pipewire.c | 12 ++++++++-
+ audio/out/buffer.c      | 58 ++++++++++++++++++++++++++++++++++++-----
+ audio/out/internal.h    |  8 ++++++
+ options/options.c       |  1 +
+ options/options.h       |  1 +
+ player/audio.c          |  3 +++
+ 9 files changed, 89 insertions(+), 8 deletions(-)
+
+diff --git a/DOCS/man/options.rst b/DOCS/man/options.rst
+index fa71dc0..a6e37a3 100644
+--- a/DOCS/man/options.rst
++++ b/DOCS/man/options.rst
+@@ -2423,6 +2423,16 @@ Audio
+         This modifies certain subtle player behavior, like A/V-sync and underrun
+         handling. Enabling this option is strongly discouraged.
+ 
++``--audio-spdif-pause-bursts=<yes|no>``
++    With spdif/HDMI passthrough, fill silence (while paused with
++    ``--audio-stream-silence``, on underruns and when padding) with IEC 61937
++    pause bursts instead of zero bytes. Zeros are not a valid IEC 61937 stream:
++    some receivers loop the last audio they decoded, or lose sync and take a
++    moment to lock again. Pause bursts keep the receiver locked and muted.
++    With ``ao=pipewire``, buffers are then always queued full, padded with
++    pause bursts. Takes effect when the audio output is (re)opened. Default:
++    no.
++
+ ``--audio-wait-open=<secs>``
+     This makes sense for use with ``--audio-stream-silence=yes``. If this option
+     is given, the player will wait for the given amount of seconds after opening
+diff --git a/audio/out/ao.c b/audio/out/ao.c
+index 4e5e9e3..b0ede87 100644
+--- a/audio/out/ao.c
++++ b/audio/out/ao.c
+@@ -222,6 +222,8 @@ static struct ao *ao_init(bool probing, struct mpv_global *global,
+ 
+     ao->device = talloc_strdup(ao, dev);
+     ao->stream_silence = flags & AO_INIT_STREAM_SILENCE;
++    ao->spdif_pause_bursts = flags & AO_INIT_SPDIF_PAUSE_BURSTS;
++    ao->spdif_pause_pos = 0;
+ 
+     init_buffer_pre(ao);
+ 
+diff --git a/audio/out/ao.h b/audio/out/ao.h
+index ce044fd..619afaf 100644
+--- a/audio/out/ao.h
++++ b/audio/out/ao.h
+@@ -57,6 +57,8 @@ enum {
+     AO_INIT_EXCLUSIVE = 1 << 3,
+     // Initialize with music role.
+     AO_INIT_MEDIA_ROLE_MUSIC = 1 << 4,
++    // With spdif formats, fill silence with IEC 61937 pause bursts.
++    AO_INIT_SPDIF_PAUSE_BURSTS = 1 << 5,
+ };
+ 
+ struct ao_device_desc {
+diff --git a/audio/out/ao_pipewire.c b/audio/out/ao_pipewire.c
+index 4ffe1b8..3baf864 100644
+--- a/audio/out/ao_pipewire.c
++++ b/audio/out/ao_pipewire.c
+@@ -199,7 +199,17 @@ static void on_process(void *userdata)
+     end_time += MP_TIME_S_TO_NS(time.buffered) / ao->samplerate;
+     end_time -= pw_stream_get_nsec(p->stream) - time.now;
+ 
+-    int samples = ao_read_data(ao, data, nframes, end_time, NULL, false, false);
++    int samples;
++    if (ao_spdif_pause_active(ao)) {
++        // A bitstream can't have gaps: the sink can't fill IEC 61937 with
++        // silence and replays stale data. Prefill with pause bursts (they
++        // stay if the buffer lock is busy) and always queue a full buffer.
++        ao_fill_silence(ao, data, 0, nframes);
++        ao_read_data(ao, data, nframes, end_time, NULL, true, false);
++        samples = nframes;
++    } else {
++        samples = ao_read_data(ao, data, nframes, end_time, NULL, false, false);
++    }
+     b->size = samples;
+ 
+     for (int i = 0; i < buf->n_datas; i++) {
+diff --git a/audio/out/buffer.c b/audio/out/buffer.c
+index 277b524..1e7b4e2 100644
+--- a/audio/out/buffer.c
++++ b/audio/out/buffer.c
+@@ -163,18 +163,62 @@ static int read_buffer(struct ao *ao, void **data, int samples, bool *eof,
+     }
+ 
+     // pad with silence (underflow/paused/eof)
+-    if (pad_silence) {
+-        for (int n = 0; n < ao->num_planes; n++) {
+-            af_fill_silence((char *)data[n] + pos * ao->sstride,
+-                    (samples - pos) * ao->sstride,
+-                    ao->format);
+-        }
+-    }
++    if (pad_silence)
++        ao_fill_silence(ao, data, pos, samples - pos);
+ 
+     ao_post_process_data(ao, data, pos);
+     return pos;
+ }
+ 
++bool ao_spdif_pause_active(struct ao *ao)
++{
++    return ao->spdif_pause_bursts && af_fmt_is_spdif(ao->format);
++}
++
++// IEC 61937 pause bursts: Pa, Pb, Pc (data type 3: pause), Pd (payload length
++// in bits: 32), then the gap length and zero padding up to the repetition
++// period. The minimum repetition periods follow Kodi: 4 frames for E-AC-3,
++// TrueHD and other 192 kHz formats, 3 frames otherwise. The phase carries over
++// between calls, so bursts stay evenly spaced across buffer boundaries.
++static void fill_spdif_pause(struct ao *ao, uint8_t *dst, int samples)
++{
++    bool hbr = ao->samplerate > 48000;
++    int period = (hbr ? 4 : 3) * ao->channels.num; // in 16-bit words
++    // Gap, in samples at the encoded rate, of one burst period.
++    int encoded_rate = hbr ? ao->samplerate / 4 : ao->samplerate;
++    uint16_t gap = MPMAX(1, (hbr ? 4 : 3) * encoded_rate / ao->samplerate);
++    size_t words = (size_t)samples * ao->sstride / 2;
++    for (size_t i = 0; i < words; i++) {
++        uint16_t w = 0;
++        switch ((ao->spdif_pause_pos + i) % period) {
++        case 0: w = 0xF872; break;  // Pa
++        case 1: w = 0x4E1F; break;  // Pb
++        case 2: w = 0x0003; break;  // Pc: pause
++        case 3: w = 32;     break;  // Pd: 32 bits of payload
++        case 4: w = gap;    break;
++        }
++        // Little endian, like libavformat's spdif muxer output.
++        dst[i * 2] = w & 0xFF;
++        dst[i * 2 + 1] = w >> 8;
++    }
++    ao->spdif_pause_pos = (ao->spdif_pause_pos + words) % period;
++}
++
++void ao_fill_silence(struct ao *ao, void **data, int offset, int samples)
++{
++    if (samples <= 0)
++        return;
++    if (ao_spdif_pause_active(ao)) {
++        // spdif formats are always interleaved
++        fill_spdif_pause(ao, (uint8_t *)data[0] + offset * ao->sstride, samples);
++        return;
++    }
++    for (int n = 0; n < ao->num_planes; n++) {
++        af_fill_silence((char *)data[n] + offset * ao->sstride,
++                        samples * ao->sstride, ao->format);
++    }
++}
++
+ static int ao_read_data_locked(struct ao *ao, void **data, int samples,
+                                int64_t out_time_ns, bool *eof, bool pad_silence)
+ {
+diff --git a/audio/out/internal.h b/audio/out/internal.h
+index 85fa777..508a970 100644
+--- a/audio/out/internal.h
++++ b/audio/out/internal.h
+@@ -46,6 +46,8 @@ struct ao {
+     struct mp_log *log; // Using e.g. "[ao/coreaudio]" as prefix
+     int init_flags; // AO_INIT_* flags
+     bool stream_silence;        // if audio inactive, just play silence
++    bool spdif_pause_bursts;    // spdif silence as IEC 61937 pause bursts
++    uint64_t spdif_pause_pos;   // 16-bit words of pause bursts written
+ 
+     // The device as selected by the user, usually using ao_device_desc.name
+     // from an entry from the list returned by driver->list_devices. If the
+@@ -202,6 +204,12 @@ struct ao_driver {
+ 
+ int ao_read_data(struct ao *ao, void **data, int samples, int64_t out_time_ns, bool *eof, bool pad_silence, bool blocking);
+ 
++// Fill samples of silence starting at data. For spdif formats with
++// spdif_pause_bursts, this writes IEC 61937 pause bursts. Returns whether the
++// AO fills spdif silence that way (pull AOs can then always pad).
++bool ao_spdif_pause_active(struct ao *ao);
++void ao_fill_silence(struct ao *ao, void **data, int offset, int samples);
++
+ bool ao_chmap_sel_adjust(struct ao *ao, const struct mp_chmap_sel *s,
+                          struct mp_chmap *map);
+ bool ao_chmap_sel_adjust2(struct ao *ao, const struct mp_chmap_sel *s,
+diff --git a/options/options.c b/options/options.c
+index 716c3e6..64946c5 100644
+--- a/options/options.c
++++ b/options/options.c
+@@ -748,6 +748,7 @@ static const m_option_t mp_opts[] = {
+     {"audio-exclusive", OPT_BOOL(audio_exclusive), .flags = UPDATE_AUDIO},
+     {"audio-fallback-to-null", OPT_BOOL(ao_null_fallback)},
+     {"audio-stream-silence", OPT_BOOL(audio_stream_silence)},
++    {"audio-spdif-pause-bursts", OPT_BOOL(audio_spdif_pause_bursts)},
+     {"audio-wait-open", OPT_FLOAT(audio_wait_open), M_RANGE(0, 60)},
+     {"force-window", OPT_CHOICE(force_vo,
+         {"no", 0}, {"yes", 1}, {"immediate", 2})},
+diff --git a/options/options.h b/options/options.h
+index 12dafea..1d0afee 100644
+--- a/options/options.h
++++ b/options/options.h
+@@ -198,6 +198,7 @@ typedef struct MPOpts {
+     bool audio_exclusive;
+     bool ao_null_fallback;
+     bool audio_stream_silence;
++    bool audio_spdif_pause_bursts;
+     float audio_wait_open;
+     int force_vo;
+     float softvol_volume;
+diff --git a/player/audio.c b/player/audio.c
+index b3e975d..79bb408 100644
+--- a/player/audio.c
++++ b/player/audio.c
+@@ -425,6 +425,9 @@ static int reinit_audio_filters_and_output(struct MPContext *mpctx)
+     if (opts->audio_stream_silence)
+         ao_flags |= AO_INIT_STREAM_SILENCE;
+ 
++    if (opts->audio_spdif_pause_bursts)
++        ao_flags |= AO_INIT_SPDIF_PAUSE_BURSTS;
++
+     if (opts->audio_exclusive)
+         ao_flags |= AO_INIT_EXCLUSIVE;
+ 
+-- 
+2.47.3
+
