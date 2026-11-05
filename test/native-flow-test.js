@@ -105,13 +105,29 @@ function check(name, cond, info = '') {
   await shot('n3-playing');
 
   // ---- remote keys reach the player, not a hidden dialog ----
+  const aidSets = () => page.evaluate(() => window.__fakeMpv.log.filter((l) => l[0] === 'set' && l[1] === 'aid').map((l) => l[2]));
   await press('Enter', 200);
   check('OK pauses mpv', await page.evaluate(() => window.__fakeMpv.state.pause === true));
+  check('passthrough via PipeWire: audio let go while paused (no loop)', (await aidSets()).at(-1) === 'no', (await aidSets()).join(','));
   await press('Enter', 200);
   check('OK resumes mpv', await page.evaluate(() => window.__fakeMpv.state.pause === false));
+  check('and the audio track comes back', (await aidSets()).at(-1) === '1', (await aidSets()).join(','));
+  const stall = async (ms) => {
+    await page.evaluate(() => window.__fakeMpv.emit('paused-for-cache', true));
+    await page.waitForTimeout(ms);
+    const during = (await aidSets()).length;
+    await page.evaluate(() => window.__fakeMpv.emit('paused-for-cache', false));
+    await page.waitForTimeout(100);
+    return during;
+  };
+  const before = (await aidSets()).length;
+  check('a short buffering stall keeps the audio open', (await stall(1000)) === before && (await aidSets()).length === before, (await aidSets()).join(','));
+  check('a long stall lets it go', (await stall(2500)) === before + 1, (await aidSets()).join(','));
+  check('and takes it back when playback resumes', (await aidSets()).slice(before).join(',') === 'no,1', (await aidSets()).join(','));
 
   // ---- stats for nerds: Info key toggles a panel that names the bottleneck ----
   const tBefore = await page.evaluate(() => window.__fakeMpv.state.time);
+  await page.evaluate(() => { window.__fakeMpv.state.slow = true; });
   await press('i', 2300);
   const tAfter = await page.evaluate(() => window.__fakeMpv.state.time);
   check('video keeps playing under the stats panel', tAfter - tBefore > 1.5 && !(await page.evaluate(() => window.__fakeMpv.state.pause)), `${tBefore} -> ${tAfter}`);
@@ -133,7 +149,30 @@ function check(name, cond, info = '') {
   await press('Enter', 200);
   check('and resumes', await page.evaluate(() => window.__fakeMpv.state.pause === false));
   await press('i', 200);
+  await page.evaluate(() => { window.__fakeMpv.state.slow = false; });
   check('Info key closes Stats for nerds', await page.evaluate(() => document.querySelector('.stats-panel').classList.contains('hidden')));
+
+  // ---- a stream the connection can never keep up with ----
+  await page.evaluate(() => { window.__fakeMpv.state.slow = true; });
+  await page.waitForFunction(() => document.getElementById('modal-root').textContent.includes('too big'), null, { timeout: 20000 })
+    .catch(() => {});
+  const offer = await modalText();
+  check('a hopeless stream offers a smaller one', offer.includes('too big for your connection'), offer.slice(0, 120));
+  check('with the numbers', /gives 20\.0 Mbps; this stream needs 40\.6 Mbps/.test(offer) && /under about [\d.]+ GB/.test(offer), offer.slice(0, 300));
+  await page.evaluate(() => { window.__fakeMpv.state.slow = false; });
+  const switchAt = await page.evaluate(() => window.__fakeMpv.state.time);
+  check('"Find a smaller stream" is focused', await page.evaluate(() => document.activeElement.textContent.includes('Find a smaller stream')));
+  await press('Enter', 300);
+  check('it closes the player', !(await playerOpen()));
+  await page.waitForFunction(() => document.querySelectorAll('#modal-root .list-item').length > 0, null, { timeout: 10000 });
+  const hint = await page.evaluate(() => document.querySelector('#modal-root .modal-hint')?.textContent || '');
+  check('the stream list says what size fits', /plays files up to about [\d.]+ GB/.test(hint), hint);
+  await shot('n3c-smaller-stream');
+  await press('Enter', 200);
+  await page.waitForTimeout(800);
+  check('the new stream plays', await playerOpen());
+  const resumed = await page.evaluate(() => window.__fakeMpv.log.filter((l) => l[1] === 'seek').at(-1));
+  check('from where you were', !!resumed && Math.abs(Number(resumed[2]) - switchAt) < 2, JSON.stringify(resumed));
 
   // ---- Back during the search cancels it cleanly ----
   await press('Escape', 400);

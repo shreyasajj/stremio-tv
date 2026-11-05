@@ -16,11 +16,14 @@ import {
 } from './mpv-video.js';
 import { iconSvg } from './icons.js';
 import { createStatsPanel } from './stats.js';
+import { estimateCatchUp, hopeless, RateMeter, streamBitrate, fmt } from './catchup.js';
 import { publishState, setCommandHandler, IDLE_STATE } from './homeassistant.js';
 
 const SEEK_COMMIT_MS = 650;
 const AUTOHIDE_MS = 5000;
 const HA_INTERVAL_MS = 15000;
+const WATCH_MS = 2000;        // catch-up watchdog poll
+const WATCH_MIN_SAMPLES = 5;  // ~10 s of download speed before judging
 
 let session = null; // active playback session or null
 let statsWanted = false; // "Stats for nerds" stays on across videos until turned off
@@ -29,7 +32,8 @@ export function isPlayerOpen() {
   return !!session;
 }
 
-// ctx: { url, meta, videoId, videoLabel, streamTitle, resumeTime, nextVideo, onNext }
+// ctx: { url, meta, videoId, videoLabel, streamTitle, resumeTime, nextVideo, onNext,
+//        onSwitchStream(time, hint) }
 export function openPlayer(ctx) {
   if (session) closePlayer();
   // The player owns the screen: no dialog may stay drawn over the video
@@ -458,6 +462,54 @@ export function openPlayer(ctx) {
     if (wantPaused !== video.paused) togglePlay();
   });
 
+  // ---- catch-up watchdog: a stream this connection can't keep up with ----
+  // Once it has stalled, measure the download speed against the stream's
+  // bitrate; if no reasonable wait would let it play through, offer once to
+  // pick a smaller stream.
+  if (video.isNative && video.mpv.getMany) {
+    const meter = new RateMeter(15);
+    let offered = false;
+    let stalledPolls = 0;
+    s.watchTimer = setInterval(async () => {
+      if (offered || session !== s || video.paused || hasOpenModal()) return;
+      const p = await video.mpv.getMany(['demuxer-cache-state', 'paused-for-cache', 'file-size', 'duration',
+        'time-pos', 'video-bitrate', 'audio-bitrate', 'demuxer-max-bytes']).catch(() => ({}));
+      if (session !== s) return;
+      const cache = p['demuxer-cache-state'] || {};
+      meter.add(cache);
+      stalledPolls = p['paused-for-cache'] ? stalledPolls + 1 : 0;
+      const struggling = stalledPolls >= 2 || (video.stalls?.count || 0) >= 2;
+      if (!struggling || meter.count < WATCH_MIN_SAMPLES) return;
+      const est = estimateCatchUp({
+        rateBps: meter.bps, bitrateBps: streamBitrate(p),
+        remainingS: (p.duration || 0) - (p['time-pos'] || 0), durationS: p.duration,
+        bufferedS: cache['cache-duration'] || 0, cacheBytes: p['demuxer-max-bytes'],
+      });
+      if (!hopeless(est)) return;
+      offered = true;
+      offerSmallerStream(est, meter.bps, streamBitrate(p));
+    }, WATCH_MS);
+  }
+
+  async function offerSmallerStream(est, rateBps, bitrateBps) {
+    const mbps = (b) => `${(b / 1e6).toFixed(1)} Mbps`;
+    const gb = est.maxBytes > 0 ? ` — pick one under about ${(est.maxBytes / 1e9).toFixed(1)} GB` : '';
+    const why = !isFinite(est.waitS) ? 'No data is arriving from this stream.'
+      : `Your connection gives ${mbps(rateBps)}; this stream needs ${mbps(bitrateBps)}.`
+        + (est.fits ? ` It would play through only after ${fmt(est.waitS)} of buffering.` : ' It will keep stopping to buffer however long you wait.');
+    const choice = await pickerModal('This stream is too big for your connection', [
+      { label: 'Find a smaller stream', sub: why + (ctx.onSwitchStream ? gb : ''), value: 'switch' },
+      { label: 'Keep watching', sub: 'Stalls will continue', value: 'keep' },
+    ], { selectedValue: 'switch' });
+    if (choice === 'switch' && session === s && ctx.onSwitchStream) {
+      const time = video.currentTime;
+      const hint = est.maxBytes > 0 ? `Your connection plays files up to about ${(est.maxBytes / 1e9).toFixed(1)} GB (${mbps(rateBps * 0.9)}) without stopping` : '';
+      closePlayer();
+      ctx.onSwitchStream(time, hint);
+    }
+    bumpAutohide();
+  }
+
   // ---- keys ----
   s.keyHandler = makeKeyHandler(s);
   Nav.pushKeyHandler(s.keyHandler);
@@ -548,6 +600,7 @@ export function closePlayer() {
   try { s.saveProgress(); } catch { /* ignore */ }
   clearInterval(s.saveTimer);
   clearInterval(s.haTimer);
+  clearInterval(s.watchTimer);
   s.stats.destroy();
   setCommandHandler(null);
   publishState(IDLE_STATE);

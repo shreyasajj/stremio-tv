@@ -36,6 +36,9 @@ module.exports = function installFakeNativeShell() {
             { id: 1, type: 'video', selected: true, codec: 'hevc' },
             { id: 1, type: 'audio', selected: true, codec: 'truehd', lang: 'eng', 'demux-channel-count': 8 },
           ]);
+          // TrueHD/EAC3 bitstream to the receiver through PipeWire.
+          emit(subs.prop, 'current-ao', 'pipewire');
+          emit(subs.prop, 'audio-out-params', { format: 'spdif-eac3', samplerate: 192000 });
           emit(subs.loaded);
           state.timer = setInterval(() => {
             if (state.pause) return;
@@ -57,20 +60,27 @@ module.exports = function installFakeNativeShell() {
     get: (name) => Promise.resolve(name === 'time-pos' ? state.time : null),
     // A software-decoded 4K HEVC stream over a connection slower than its
     // bitrate, mid-stall: the stats panel should blame both.
-    getMany: (names) => Promise.resolve(Object.fromEntries(Object.entries({
+    // Only while state.slow; otherwise a healthy stream.
+    getMany: (names) => Promise.resolve(Object.fromEntries(Object.entries(!state.slow ? {
+      'stream-open-filename': state.file, duration: state.duration, 'time-pos': state.time,
+      'video-bitrate': 8e6, 'audio-bitrate': 640e3, 'paused-for-cache': false,
+      'demuxer-cache-state': { 'cache-duration': 60, 'raw-input-rate': 0, idle: true },
+    } : {
       'stream-open-filename': state.file, 'file-format': 'mkv', 'video-format': 'hevc',
       'video-params': { w: 3840, h: 2160, pixelformat: 'yuv420p10', primaries: 'bt.2020', gamma: 'pq' },
       hwdec: 'auto-safe', 'hwdec-current': 'no', 'estimated-vf-fps': 23.976,
       'decoder-frame-drop-count': (state.drops = (state.drops || 0) + 3), 'frame-drop-count': 0,
       'video-bitrate': 40e6, 'audio-bitrate': 640e3, 'paused-for-cache': true,
       'demuxer-cache-state': { 'cache-duration': 0.4, 'raw-input-rate': 2.5e6, 'fw-bytes': 2e6 },
+      duration: state.duration, 'time-pos': state.time, 'file-size': 40.64e6 / 8 * state.duration,
+      'demuxer-max-bytes': 300 * 1048576,
     }).filter(([k]) => names.includes(k)))),
     onProperty: on(subs.prop),
     onFileLoaded: on(subs.loaded),
     onEndFile: on(subs.end),
   };
 
-  window.__fakeMpv = { state, log };
+  window.__fakeMpv = { state, log, emit: (name, value) => emit(subs.prop, name, value) };
 
   // Fake broker: "broker.test" and "10.0.0.2" accept password "secret".
   const haSubs = { status: new Set(), command: new Set(), setup: new Set() };

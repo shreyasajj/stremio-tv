@@ -1,3 +1,10 @@
+### 0.7.1
+- **No more looping audio on pause with Dolby passthrough over PipeWire.** With *Surround passthrough* on and the default audio device, pausing could replay the last half second of sound over and over. The audio output is now closed while paused and reopened when you press play. Your receiver may take a moment to pick the sound back up. Short buffering hiccups leave it alone; a stall that lasts more than 2 seconds closes it too.
+- **"This stream is too big for your connection."** When a stream keeps stopping to buffer, the player compares your download speed with the stream's bitrate. If no reasonable wait would let it play through, it offers once to find a smaller stream. The stream list then shows the largest file size your connection plays smoothly, and the new stream starts where you were.
+- **Stats for nerds** has a new *Plays through* line: whether the stream keeps up with your connection, and if not, how long you'd have to wait or that it never will.
+
+---
+
 ### 0.7.0
 - **No more beeping while buffering or paused.** On some HDMI setups (and receivers playing Dolby/DTS passthrough) pausing, or the video stopping to buffer, left a harsh beep looping until playback resumed. The audio output now gets silence instead.
 - **Stats for nerds.** Press **Stats** in the player controls, or the remote's **Info** key, for a see-through panel over the video. It shows resolution and codec, whether the GPU or the CPU is decoding, dropped frames, connection speed next to the bitrate the stream needs, buffer health and connection graphs, stalls, and CPU/GPU load. A line at the top says what's wrong: a network that's too slow, a decoder or GPU that can't keep up, or "playing smoothly". The video keeps playing and the remote works as usual while it's open. It stays on for the next video until you turn it off.

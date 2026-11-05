@@ -32,8 +32,9 @@ remote: arrow keys, OK, and Back are all you need.
   - **Up/Down** → show the control row (Pause · Subtitles · Audio · Speed · Stats · Next episode)
   - **Stats** (or the remote's **Info** key) → *Stats for nerds*, a see-through panel over the
     video: resolution, codec, GPU or CPU decoding, dropped frames, connection speed against the
-    stream's bitrate, buffer health, stalls, CPU/GPU load, and a line saying whether buffering is
-    down to the network or the box
+    stream's bitrate, buffer health, stalls, CPU/GPU load, whether it can play through without
+    stopping, and a line saying whether buffering is down to the network or the box. A stream
+    too big for the connection gets an offer to switch to a smaller one
   - **Back** → hide controls / stop playback (progress is saved)
 - **Home in three lanes** — the focused row slides to the middle of the screen with the one above
   still in view; on the first row (Continue Watching) the title card is back above it. Focused
