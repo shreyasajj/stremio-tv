@@ -7,6 +7,7 @@ import { installedAddons, installDefaultAddons } from './addons.js';
 import { Storage } from './storage.js';
 import { isPlayerOpen } from './player.js';
 import { initHomeAssistant } from './homeassistant.js';
+import { initBridgeControl } from './bridgecontrol.js';
 import { forgetSavedSession } from './stremio-api.js';
 
 import * as home from './screens/home.js';
@@ -50,6 +51,7 @@ const router = {
     container.append(screenEl);
     markSidebar(name);
     Nav.focusFirst(screenEl);
+    return screenEl;
   },
 
   async back() {
@@ -81,9 +83,13 @@ const router = {
     const mod = SCREENS[top.name];
     try {
       const fresh = await mod.render({ router, params: top.params });
+      // A remote deep link can push a page while this refresh is fetching.
+      if (!stack.includes(top)) return;
+      const current = stack[stack.length - 1] === top;
+      fresh.classList.toggle('hidden', !current);
       top.el.replaceWith(fresh);
       top.el = fresh;
-      Nav.focusFirst(fresh);
+      if (current) Nav.focusFirst(fresh);
     } catch (e) {
       console.error(e);
     }
@@ -146,6 +152,7 @@ async function boot() {
   }
 
   await router.show('home');
+  initBridgeControl(router);
   // Focus animations wait until startup has settled (see .motion in tv.css).
   setTimeout(() => document.documentElement.classList.add('motion'), MOTION_DELAY_MS);
 }

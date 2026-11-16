@@ -30,6 +30,8 @@ jobs:
         with:
           node-version: 20
       - run: npm ci --ignore-scripts
+      - name: Validate bridge protocol
+        run: node --test test/bridge-protocol.test.js
       - name: Build dev image
         run: docker build -t stremio-tv-native-dev native/dev
       - name: Build + run native test on headless Weston

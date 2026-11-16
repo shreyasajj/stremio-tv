@@ -219,3 +219,11 @@ Project layout: `native/` is the Qt shell; `ui/` holds `js/nav.js` (spatial navi
 `js/mpv-video.js` (libmpv as a `<video>`-like element), `js/homeassistant.js` (Home
 Assistant glue), `js/screens/*` (screens) and `js/stremio-api.js` (account login/addon
 import).
+
+## Bigscreen Bridge native control
+
+The `bigscreen-bridge` branch adds a UI/player control endpoint over the local
+session bus, with single-instance launch and acknowledged movie/series/episode
+navigation. It shares the existing Qt/libmpv player and saved progress; the MQTT
+integration remains independent and backward compatible. See
+[interface, build commands and tests](docs/bigscreen-bridge.md).

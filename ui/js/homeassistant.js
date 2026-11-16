@@ -42,7 +42,8 @@ export const IDLE_STATE = {
   duration: null, progress: null, poster: null, imdb_id: null,
 };
 
-export function publishState(state) {
+export function publishState(state, bridgeFields = {}) {
+  window.shell?.bridge?.publish({...state, ...bridgeFields});
   if (!haAvailable()) return;
   window.shell.homeAssistant.publish(state);
 }
@@ -50,6 +51,11 @@ export function publishState(state) {
 // The player registers how to carry out commands while it is open.
 export function setCommandHandler(fn) {
   commandHandler = fn;
+}
+
+// The native bridge uses the existing player actions; MQTT parsing stays unchanged.
+export function runPlayerCommand(command) {
+  return commandHandler ? commandHandler(command) !== false : false;
 }
 
 // Parse an incoming command: { action } or { action: 'seek', by }, or null.

@@ -12,7 +12,8 @@
 
 const path = require('path');
 const fs = require('fs');
-const { spawn } = require('child_process');
+const { spawn, execFile } = require('child_process');
+const { randomUUID } = require('crypto');
 const { CdpPage } = require('./cdp-page.js');
 const { PNG } = require('playwright-core/lib/utilsBundle');
 const mockAddon = require('./mock-addon.js');
@@ -140,8 +141,10 @@ function recordPeak(source, ms) {
     localStorage.clear();
     localStorage.setItem('stv.addons', JSON.stringify([{ transportUrl: base + '/manifest.json', manifest: m }]));
     localStorage.setItem('stv.firstRunDone', '1');
+    window.__beforeMockReload = true;
   }, [manifest, mockAddon.BASE]);
   await page.reload();
+  await page.waitForFunction(() => !window.__beforeMockReload && !!window.shell?.bridge && !!window.stremioTV?.router);
   await page.waitForSelector('.meta-card', { timeout: 15000 });
   await page.waitForTimeout(500);
   check('home renders the mock catalog', await page.count('h2.row-title') >= 2);
@@ -284,6 +287,8 @@ function recordPeak(source, ms) {
     console.log('SKIP  Home Assistant checks (no mosquitto)');
   }
 
+  await nativeBridgeChecks();
+
   check('app still running', !appExited);
   page.close();
   stopping = true;
@@ -305,6 +310,65 @@ function recordPeak(source, ms) {
   }
   console.log(failures ? `\n${failures} FAILURES` : '\nAll native checks passed.');
   process.exit(failures ? 1 : 0);
+
+  async function nativeBridgeChecks() {
+    const execute = (req) => new Promise((resolve, reject) => {
+      execFile('dbus-send', ['--session', '--print-reply', '--reply-timeout=25000',
+        '--dest=io.github.shreyasajj.StremioTV.Control', '/io/github/shreyasajj/StremioTV/Control',
+        'io.github.shreyasajj.StremioTV.Control.Execute', 'string:' + JSON.stringify(req)],
+        (error, output) => {
+          if (error) return reject(error);
+          try { resolve(JSON.parse(output.slice(output.indexOf('{'), output.lastIndexOf('}') + 1))); }
+          catch (error) { reject(new Error('Invalid D-Bus response: ' + output)); }
+        });
+    });
+    const call = (command, fields = {}) => execute({id: randomUUID(), command, ...fields});
+    check('bridge: renderer ready', (await call('get_state')).result?.ready === true);
+    const unsafe = await call('open', {content_type:'movie', content_id:'https://example.org'});
+    check('bridge: arbitrary URLs rejected', !unsafe.ok && unsafe.error.code === 'invalid_request');
+    const movie = {id:randomUUID(), command:'open',content_type:'movie',content_id:'mock:movie2'};
+    check('bridge: movie navigation acknowledged', (await execute(movie)).result?.delivery === 'detail');
+    const count = await page.count('.detail-screen');
+    check('bridge: duplicate request is idempotent', (await execute(movie)).ok && await page.count('.detail-screen') === count);
+    check('bridge: exact movie title', (await page.text('.detail-screen:not(.hidden)')).includes('Mock Movie 2') && await page.count('#screens .screen:not(.hidden)') === 1);
+    const episode = await call('open', {content_type:'episode',content_id:{series_id:'mock:series1',video_id:'mock:series1:2:2'}});
+    check('bridge: series/episode selected', episode.ok && await page.evaluate(() => document.activeElement.dataset.videoId) === 'mock:series1:2:2');
+    const missing = await call('open', {content_type:'episode',content_id:{series_id:'mock:series1',video_id:'mock:series1:9:9'}});
+    check('bridge: missing episode fails without navigation', !missing.ok && missing.error.code === 'content_not_found'
+      && await page.evaluate(() => document.activeElement.dataset.videoId) === 'mock:series1:2:2');
+    await page.evaluate(() => localStorage.removeItem('stv.library'));
+    const noResume = await call('open', {content_type:'movie',content_id:'mock:movie1',resume:true});
+    check('bridge: missing stored resume is explicit', !noResume.ok && noResume.error.code === 'resume_unavailable');
+    await page.evaluate(() => window.stremioTV.Storage.saveProgress({type:'movie',id:'mock:movie1',name:'Mock Movie 1',time:12,duration:30}));
+    const resume = await call('open', {content_type:'movie',content_id:'mock:movie1',resume:true});
+    check('bridge: resume opens existing stream selection', resume.ok && resume.result.delivery === 'stream_selection');
+    await key('Enter');
+    check('bridge: stored playback reaches libmpv', !!await waitFor(async () => (await mpvGet('time-pos')) > 10, {timeout:15000}));
+    const media = await waitFor(async () => {
+      const state = (await call('get_state')).result?.media;
+      return state?.state === 'playing' && state?.duration > 0 ? state : null;
+    });
+    check('bridge: native title, duration, position and content ID', media?.title === 'Mock Movie 1' && media.content_id === 'mock:movie1'
+      && media.position >= 10 && !!media.updated_at);
+    check('bridge: pause acknowledged', (await call('pause')).ok);
+    check('bridge: pause reaches libmpv', !!await waitFor(() => mpvGet('pause'), {timeout:4000}));
+    check('bridge: seek acknowledged', (await call('seek', {position:8})).ok);
+    check('bridge: absolute seek reaches libmpv', !!await waitFor(async () => Math.abs((await mpvGet('time-pos')) - 8) < 1, {timeout:4000}));
+    check('bridge: play acknowledged', (await call('play')).ok);
+    check('bridge: play reaches libmpv', !!await waitFor(async () => (await mpvGet('pause')) === false, {timeout:4000}));
+    const secondaryEnv = {...process.env}; delete secondaryEnv.QTWEBENGINE_REMOTE_DEBUGGING;
+    const secondary = spawn(BIN, [], {env:secondaryEnv, stdio:'ignore'});
+    const exit = await new Promise(resolve => {
+      const timer=setTimeout(()=>{secondary.kill();resolve(-1);},8000);
+      secondary.on('exit', code=>{clearTimeout(timer);resolve(code);});
+    });
+    check('bridge: second instance exits successfully', exit === 0);
+    check('bridge: second instance preserves player', await page.evaluate(() => !document.getElementById('player-root').classList.contains('hidden')));
+    check('bridge: stop acknowledged', (await call('stop')).ok);
+    check('bridge: stop closes player', !!await waitFor(() => page.evaluate(() => document.getElementById('player-root').classList.contains('hidden'))));
+    const noPlayer = await call('pause');
+    check('bridge: no-player controls return an error', !noPlayer.ok && noPlayer.error.code === 'not_playing');
+  }
 
   async function homeAssistantChecks() {
     const base = 'stremio_tv/living_room';

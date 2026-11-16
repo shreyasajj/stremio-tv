@@ -12,6 +12,7 @@
       const native = channel.objects.native;
       const mpv = channel.objects.mpv;
       const ha = channel.objects.homeAssistant;
+      const control = channel.objects.bridgeControl;
 
       let fetchSeq = 0;
       const pendingFetches = new Map();
@@ -59,6 +60,13 @@
           onProperty: listeners(mpv.propertyChanged),
           onFileLoaded: listeners(mpv.fileLoaded),
           onEndFile: listeners(mpv.endFile),
+        } : null,
+        bridge: control ? {
+          ready: (ready) => control.setReady(!!ready),
+          publish: (state) => control.publish(state),
+          complete: (id, result) => control.complete(id, result),
+          onRequest: listeners(control.requested),
+          onCancel: listeners(control.cancelled),
         } : null,
         homeAssistant: ha ? {
           configure: (settings) => ha.configure(settings),
