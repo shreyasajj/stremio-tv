@@ -12,9 +12,9 @@ export async function render({ router, params }) {
   const { type, id, preview } = params;
   const root = el('div', { class: 'screen detail-screen' });
 
-  let meta = null;
+  let meta = params.resolvedMeta || null;
   try {
-    meta = await getMeta(type, id);
+    if (!meta) meta = await getMeta(type, id);
   } catch (e) {
     console.error(e);
   }
@@ -50,8 +50,9 @@ export async function render({ router, params }) {
   const seasons = isSeries
     ? [...new Set(meta.videos.map((v) => v.season))].sort((a, b) => (a ?? 99) - (b ?? 99))
     : [];
-  let season = entry?.videoId
-    ? meta.videos?.find((v) => v.id === entry.videoId)?.season ?? seasons.find((s) => s !== 0) ?? seasons[0]
+  const selectedVideoId = params.videoId || entry?.videoId;
+  let season = selectedVideoId
+    ? meta.videos?.find((v) => v.id === selectedVideoId)?.season ?? seasons.find((s) => s !== 0) ?? seasons[0]
     : seasons.find((s) => s !== 0) ?? seasons[0];
 
   function episodesOf(s) {
@@ -123,6 +124,7 @@ export async function render({ router, params }) {
         el('div', { class: 'ep-title', text: v.title || v.name || videoLabel(v) || v.id }),
         facts.length ? el('div', { class: 'ep-meta', text: facts.join(' · ') }) : null,
         v.overview ? el('div', { class: 'ep-overview', text: v.overview }) : null);
+      item.dataset.videoId = v.id;
       item.addEventListener('click', () => playFlow(meta, v).catch((e) => toast(e.message, 'error')));
       return item;
     }

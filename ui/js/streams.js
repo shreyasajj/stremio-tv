@@ -37,7 +37,7 @@ let activeFlow = null;
 
 // Entry point. meta required; video required for series (null for movies).
 export async function playFlow(meta, video, { resumeTime, preferBinge, hint } = {}) {
-  if (activeFlow) return;
+  if (activeFlow) return {status: 'busy'};
   const flow = (activeFlow = { cancelled: false, ctrl: new AbortController() });
   const finish = () => { if (activeFlow === flow) activeFlow = null; };
   const cancel = () => { flow.cancelled = true; flow.ctrl.abort(); finish(); };
@@ -52,7 +52,7 @@ export async function playFlow(meta, video, { resumeTime, preferBinge, hint } = 
     loading.close();
     finish();
     toast('Could not fetch streams: ' + e.message, 'error');
-    return;
+    return {status: 'stream_error'};
   }
   if (flow.cancelled) return; // user backed out while we were waiting
   loading.close();
@@ -62,7 +62,7 @@ export async function playFlow(meta, video, { resumeTime, preferBinge, hint } = 
   if (!streams.length) {
     finish();
     toast('No streams found. Install a streams addon (e.g. AIOStreams) in Add-ons.', 'error', 6000);
-    return;
+    return {status: 'no_streams'};
   }
 
   // Binge continue: if we know the previous stream's bingeGroup, auto-pick.
@@ -72,11 +72,12 @@ export async function playFlow(meta, video, { resumeTime, preferBinge, hint } = 
     if (match) {
       finish();
       startPlayback(meta, video, match, { resumeTime });
-      return;
+      return {status: 'playing_requested'};
     }
   }
 
   pickStream(meta, video, streams, { resumeTime, hint, onDone: finish });
+  return {status: 'stream_selection'};
 }
 
 // "Finding streams…": focus moves into the dialog itself (not a button), so
@@ -164,9 +165,9 @@ export async function resumeFlow(meta, entry) {
   const finished = entry.duration && entry.time >= entry.duration * 0.95;
   if (finished && video) {
     const next = nextVideoOf(meta, video);
-    if (next) { await playFlow(meta, next); return; }
+    if (next) return await playFlow(meta, next);
   }
-  await playFlow(meta, video, { resumeTime: finished ? 0 : entry.time });
+  return await playFlow(meta, video, { resumeTime: finished ? 0 : entry.time });
 }
 
 export { videoLabel, nextVideoOf };

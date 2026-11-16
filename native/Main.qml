@@ -38,6 +38,16 @@ Window {
         WebChannel.id: "homeAssistant"
     }
 
+    BridgeControl {
+        id: appControl
+        WebChannel.id: "bridgeControl"
+        onFocusRequested: {
+            if (window.visibility === Window.Minimized) window.showFullScreen()
+            window.raise()
+            window.requestActivate()
+        }
+    }
+
     MpvVideo {
         anchors.fill: parent
         controller: mpv
@@ -73,7 +83,7 @@ Window {
         settings.showScrollBars: false
         settings.focusOnNavigationEnabled: true
         webChannel: WebChannel {
-            registeredObjects: [shell, mpv, homeAssistant]
+            registeredObjects: [shell, mpv, homeAssistant, appControl]
         }
 
         Component.onCompleted: {
@@ -87,8 +97,13 @@ Window {
             forceActiveFocus()
         }
 
+        onLoadingChanged: request => {
+            if (request.status === WebEngineView.LoadStartedStatus) appControl.setReady(false)
+        }
+
         onRenderProcessTerminated: (status, code) => {
             console.warn("Web UI process terminated (" + status + ", " + code + "), reloading")
+            appControl.setReady(false)
             mpv.command(["stop"])
             reloadTimer.start()
         }

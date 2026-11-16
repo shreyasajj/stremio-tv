@@ -5,8 +5,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(STREMIO_TV_APP_ID "io.github.shreyasajj.StremioTV" CACHE STRING "Desktop file / Wayland app id")
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Quick Qml Network OpenGL WebEngineCore WebEngineQuick WebChannel)
-find_package(Qt6 6.5 QUIET COMPONENTS DBus)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Quick Qml Network OpenGL WebEngineCore WebEngineQuick WebChannel DBus)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(MPV REQUIRED IMPORTED_TARGET mpv)
 pkg_check_modules(MOSQUITTO REQUIRED IMPORTED_TARGET libmosquitto)
@@ -24,6 +23,7 @@ qt_add_qml_module(stremio-tv-native
         mpvitem.cpp mpvitem.h
         shellbridge.cpp shellbridge.h
         embedreferrer.cpp embedreferrer.h
+        bridgecontrol.cpp bridgecontrol.h
         homeassistant.cpp homeassistant.h
         phonesetup.cpp phonesetup.h
         third_party/qrcodegen/qrcodegen.cpp third_party/qrcodegen/qrcodegen.hpp

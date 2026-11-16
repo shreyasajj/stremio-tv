@@ -163,7 +163,7 @@ export function openPlayer(ctx) {
 
   // Home Assistant: what is playing, on every change and every 15 s while
   // playing (HA formats the position; updated_at lets it extrapolate).
-  const reportToHa = () => { if (session === s) publishState(haState(s)); };
+  const reportToHa = () => { if (session === s) publishState(haState(s), {content_id: ctx.meta?.id || null, video_id: ctx.videoId || null}); };
   ['loadedmetadata', 'play', 'playing', 'pause', 'seeked'].forEach((type) => video.addEventListener(type, reportToHa));
   s.haTimer = setInterval(() => { if (!video.paused) reportToHa(); }, HA_INTERVAL_MS);
   s.reportToHa = reportToHa;
@@ -455,11 +455,12 @@ export function openPlayer(ctx) {
 
   // ---- Home Assistant commands: the same actions as the remote ----
   setCommandHandler((cmd) => {
-    if (session !== s) return;
+    if (session !== s) return false;
     if (cmd.action === 'stop') { closePlayer(); return; }
-    if (cmd.action === 'seek') {
+    if (cmd.action === 'seek' || cmd.action === 'seek_absolute') {
+      if (cmd.action === 'seek_absolute' && !(Number.isFinite(video.duration) && video.duration > 0)) return false;
       const dur = video.duration || Infinity;
-      video.currentTime = Math.max(0, Math.min(isFinite(dur) ? dur - 1 : Infinity, video.currentTime + cmd.by));
+      video.currentTime = Math.max(0, Math.min(isFinite(dur) ? dur - 1 : Infinity, cmd.action === 'seek_absolute' ? cmd.position : video.currentTime + cmd.by));
       updateBar();
       reportToHa();
       return;
