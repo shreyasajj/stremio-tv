@@ -27,6 +27,8 @@ public slots:
     QString Execute(const QString &payload);
 
 signals:
+    // Exported on the session bus so listeners need not poll; carries no data.
+    Q_SCRIPTABLE void StateChanged();
     void requested(const QVariantMap &request);
     void focusRequested();
     void cancelled(const QString &id);
