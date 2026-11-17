@@ -27,6 +27,7 @@ export function initBridgeControl(router) {
         cancelled: () => operation.cancelled || Date.now() > operation.deadline,
         closePlayer: () => { operation.changed = true; closePlayer(); },
         getLibraryEntry: (type, id) => Storage.getLibraryEntry(type, id),
+        getLibrary: () => Storage.getLibrary(),
         closeModals,
         push: (...args) => router.push(...args),
         focusEpisode: (screen, videoId) => {

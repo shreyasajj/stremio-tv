@@ -57,3 +57,21 @@ test('a cancelled slow lookup cannot navigate or stop the existing player', asyn
   await assert.rejects(executeRequest({id:'one',command:'open',content_type:'movie',content_id:'tt123'},d),{code:'command_timeout'});
   assert.deepEqual(d.calls,[]);
 });
+test('browse pages the stored library without navigating', async () => {
+  const {executeRequest} = await protocol;
+  const d = deps();
+  d.getLibrary = () => ({
+    'movie:tt1': {type:'movie', id:'tt1', name:'Old', time:5, updatedAt:1},
+    'series:tt2': {type:'series', id:'tt2', name:'New', time:90, updatedAt:9},
+    'movie:bad': {type:'movie', id:'http://x/y', name:'Unsafe', updatedAt:5},
+    'tv:tt3': {type:'tv', id:'tt3', name:'Other', updatedAt:7},
+  });
+  const first = await executeRequest({id:'b1', command:'browse', limit:1}, d);
+  assert.deepEqual(first, {items:[{id:'tt2', name:'New', content_type:'series', path:null, resumable:true}], next_offset:1, total:2});
+  const second = await executeRequest({id:'b2', command:'browse', offset:1, limit:1}, d);
+  assert.equal(second.items[0].id, 'tt1');
+  assert.equal(second.next_offset, null);
+  assert.deepEqual(d.calls, []);
+  for (const bad of [{limit:51}, {offset:-1}, {offset:1.5}, {path:'x'}])
+    await assert.rejects(executeRequest({id:'b3', command:'browse', ...bad}, d));
+});

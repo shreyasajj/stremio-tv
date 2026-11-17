@@ -365,6 +365,9 @@ function recordPeak(source, ms) {
     check('bridge: second instance exits successfully', exit === 0);
     check('bridge: second instance preserves player', await page.evaluate(() => !document.getElementById('player-root').classList.contains('hidden')));
     check('bridge: stop acknowledged', (await call('stop')).ok);
+    const shelf = await call('browse', {limit: 5});
+    check('bridge: browse lists the stored library', shelf.ok && shelf.result.items.some(i => i.id === 'mock:movie1' && i.content_type === 'movie'));
+    check('bridge: browse rejects bad page bounds', (await call('browse', {limit: 500})).error?.code === 'invalid_request');
     check('bridge: stop closes player', !!await waitFor(() => page.evaluate(() => document.getElementById('player-root').classList.contains('hidden'))));
     const noPlayer = await call('pause');
     check('bridge: no-player controls return an error', !noPlayer.ok && noPlayer.error.code === 'not_playing');
