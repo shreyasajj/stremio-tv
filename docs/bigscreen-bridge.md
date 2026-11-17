@@ -25,8 +25,9 @@ trusts the logged-in Unix user; the network bridge supplies bearer authenticatio
 {"id":"request-4","command":"seek","position":120}
 ```
 
-Commands: `get_state`, `focus`, `open`, `play`, `pause`, `stop`, `seek` (absolute
-seconds). Content types: `movie`, `series`, `episode`. IDs support alphanumerics,
+Commands: `get_state`, `focus`, `open`, `browse`, `play`, `pause`, `stop`, `seek` (absolute
+seconds). `browse` takes `offset` and `limit` (1-50) and lists the stored library,
+most recently watched first, without navigating. Content types: `movie`, `series`, `episode`. IDs support alphanumerics,
 colon, dot, underscore and hyphen, up to 256 characters; other ID forms are
 explicitly rejected. No volume/next/previous support is advertised.
 

@@ -27,7 +27,7 @@ BridgeControl::BridgeControl(QObject *parent) : QObject(parent) {
 QVariantMap BridgeControl::snapshot() const {
     return {{"protocol", 1}, {"ready", ready_},
             {"content_types", QStringList{"movie", "series", "episode"}},
-            {"capabilities", QStringList{"play", "pause", "stop", "seek"}}, {"media", state_}};
+            {"capabilities", QStringList{"play", "pause", "stop", "seek"}}, {"browse", true}, {"media", state_}};
 }
 
 QString BridgeControl::answer(const QString &id, const QVariantMap &body) const {
@@ -62,6 +62,7 @@ QString BridgeControl::Execute(const QString &payload) {
     QStringList allowed{"id", "command"};
     if (command == "open") allowed << "content_type" << "content_id" << "resume";
     else if (command == "seek") allowed << "position";
+    else if (command == "browse") allowed << "offset" << "limit";
     else if (!QStringList{"get_state", "focus", "play", "pause", "stop"}.contains(command))
         return error("unsupported", "Unsupported command");
     for (auto it = req.begin(); it != req.end(); ++it)
@@ -79,6 +80,16 @@ QString BridgeControl::Execute(const QString &payload) {
     if (command == "seek" && (!req.value("position").isDouble() || !std::isfinite(req.value("position").toDouble())
                               || req.value("position").toDouble() < 0))
         return error("invalid_request", "Seek position must be finite and nonnegative");
+    if (command == "browse") {
+        // Whole numbers only; the renderer pages its stored library with them.
+        auto whole = [&](const char *key, double fallback, double low, double high) {
+            const auto value = req.value(key);
+            const double number = value.isUndefined() ? fallback : value.toDouble(-1);
+            return (value.isUndefined() || value.isDouble()) && number == std::floor(number) && number >= low && number <= high;
+        };
+        if (!whole("offset", 0, 0, 1000000) || !whole("limit", 50, 1, 50))
+            return error("invalid_request", "Invalid page bounds");
+    }
     if (command == "get_state") {
         const auto response = answer(id, {{"ok", true}, {"result", snapshot()}});
         remember(id, req, response);
