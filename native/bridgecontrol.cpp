@@ -20,7 +20,8 @@ QString BridgeControl::serviceName() { return QStringLiteral("io.github.shreyasa
 QString BridgeControl::objectPath() { return QStringLiteral("/io/github/shreyasajj/StremioTV/Control"); }
 
 BridgeControl::BridgeControl(QObject *parent) : QObject(parent) {
-    QDBusConnection::sessionBus().registerObject(objectPath(), this, QDBusConnection::ExportAllSlots);
+    QDBusConnection::sessionBus().registerObject(objectPath(), this,
+        QDBusConnection::ExportAllSlots | QDBusConnection::ExportScriptableSignals);
 }
 
 QVariantMap BridgeControl::snapshot() const {
@@ -114,7 +115,9 @@ void BridgeControl::complete(const QString &id, const QVariantMap &response) {
 }
 
 void BridgeControl::setReady(bool ready) {
+    const bool changed = ready_ != ready;
     ready_ = ready;
+    if (changed) emit StateChanged();
     if (!ready) {
         state_.clear();
         const auto keys = pending_.keys();
@@ -138,6 +141,16 @@ void BridgeControl::publish(const QVariantMap &state) {
         const double number = state.value(key).toDouble(&ok);
         if (ok && std::isfinite(number) && number >= 0 && !state.value(key).isNull()) clean.insert(key, number);
     }
-    clean.insert("updated_at", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs));
+    const auto now = QDateTime::currentDateTimeUtc();
+    clean.insert("updated_at", now.toString(Qt::ISODateWithMs));
+    // Ordinary progress is not news: listeners interpolate from position and updated_at.
+    auto steady = [](QVariantMap media) { media.remove("position"); media.remove("updated_at"); return media; };
+    bool changed = steady(clean) != steady(state_);
+    if (!changed) {
+        const auto before = QDateTime::fromString(state_.value("updated_at").toString(), Qt::ISODateWithMs);
+        const double elapsed = clean.value("state") == "playing" ? before.msecsTo(now) / 1000.0 : 0;
+        changed = std::abs(clean.value("position").toDouble() - state_.value("position").toDouble() - elapsed) > 2;
+    }
     state_ = clean;
+    if (changed) emit StateChanged();
 }
