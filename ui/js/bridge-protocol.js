@@ -22,6 +22,11 @@ export function validateRequest(request) {
   } else if (request.command === 'seek') {
     allowed.add('position');
     if (typeof request.position !== 'number' || !Number.isFinite(request.position) || request.position < 0) fail('Invalid seek position');
+  } else if (request.command === 'browse') {
+    ['offset', 'limit'].forEach(k => allowed.add(k));
+    const {offset = 0, limit = 50} = request;
+    if (!Number.isInteger(offset) || offset < 0 || offset > 1000000 || !Number.isInteger(limit) || limit < 1 || limit > 50)
+      fail('Invalid page bounds');
   } else if (!['play', 'pause', 'stop'].includes(request.command)) throw new BridgeError('unsupported', 'Unsupported renderer command');
   if (Object.keys(request).some(k => !allowed.has(k))) fail('Unknown request fields');
   return request;
@@ -33,6 +38,21 @@ export async function executeRequest(raw, deps) {
     if (deps.cancelled?.()) throw new BridgeError('command_timeout', 'The application command was cancelled');
   };
   guard();
+  if (request.command === 'browse') {
+    // Read-only: the stored library, most recently watched first. Nothing navigates.
+    const {offset = 0, limit = 50} = request;
+    const entries = Object.values(deps.getLibrary() || {})
+      .filter(e => e && ['movie', 'series'].includes(e.type) && validId(e.id) && typeof e.name === 'string')
+      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    return {
+      items: entries.slice(offset, offset + limit).map(e => ({
+        id: e.id, name: e.name.slice(0, 512), content_type: e.type, path: null,
+        resumable: e.time > 10,
+      })),
+      next_offset: offset + limit < entries.length ? offset + limit : null,
+      total: entries.length,
+    };
+  }
   if (request.command !== 'open') {
     const cmd = request.command === 'seek' ? {action: 'seek_absolute', position: request.position} : {action: request.command};
     if (!deps.runPlayerCommand(cmd)) throw new BridgeError('not_playing', 'No active player supports this command');

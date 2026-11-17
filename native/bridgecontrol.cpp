@@ -20,13 +20,14 @@ QString BridgeControl::serviceName() { return QStringLiteral("io.github.shreyasa
 QString BridgeControl::objectPath() { return QStringLiteral("/io/github/shreyasajj/StremioTV/Control"); }
 
 BridgeControl::BridgeControl(QObject *parent) : QObject(parent) {
-    QDBusConnection::sessionBus().registerObject(objectPath(), this, QDBusConnection::ExportAllSlots);
+    QDBusConnection::sessionBus().registerObject(objectPath(), this,
+        QDBusConnection::ExportAllSlots | QDBusConnection::ExportScriptableSignals);
 }
 
 QVariantMap BridgeControl::snapshot() const {
     return {{"protocol", 1}, {"ready", ready_},
             {"content_types", QStringList{"movie", "series", "episode"}},
-            {"capabilities", QStringList{"play", "pause", "stop", "seek"}}, {"media", state_}};
+            {"capabilities", QStringList{"play", "pause", "stop", "seek"}}, {"browse", true}, {"media", state_}};
 }
 
 QString BridgeControl::answer(const QString &id, const QVariantMap &body) const {
@@ -61,6 +62,7 @@ QString BridgeControl::Execute(const QString &payload) {
     QStringList allowed{"id", "command"};
     if (command == "open") allowed << "content_type" << "content_id" << "resume";
     else if (command == "seek") allowed << "position";
+    else if (command == "browse") allowed << "offset" << "limit";
     else if (!QStringList{"get_state", "focus", "play", "pause", "stop"}.contains(command))
         return error("unsupported", "Unsupported command");
     for (auto it = req.begin(); it != req.end(); ++it)
@@ -78,6 +80,16 @@ QString BridgeControl::Execute(const QString &payload) {
     if (command == "seek" && (!req.value("position").isDouble() || !std::isfinite(req.value("position").toDouble())
                               || req.value("position").toDouble() < 0))
         return error("invalid_request", "Seek position must be finite and nonnegative");
+    if (command == "browse") {
+        // Whole numbers only; the renderer pages its stored library with them.
+        auto whole = [&](const char *key, double fallback, double low, double high) {
+            const auto value = req.value(key);
+            const double number = value.isUndefined() ? fallback : value.toDouble(-1);
+            return (value.isUndefined() || value.isDouble()) && number == std::floor(number) && number >= low && number <= high;
+        };
+        if (!whole("offset", 0, 0, 1000000) || !whole("limit", 50, 1, 50))
+            return error("invalid_request", "Invalid page bounds");
+    }
     if (command == "get_state") {
         const auto response = answer(id, {{"ok", true}, {"result", snapshot()}});
         remember(id, req, response);
@@ -114,7 +126,9 @@ void BridgeControl::complete(const QString &id, const QVariantMap &response) {
 }
 
 void BridgeControl::setReady(bool ready) {
+    const bool changed = ready_ != ready;
     ready_ = ready;
+    if (changed) emit StateChanged();
     if (!ready) {
         state_.clear();
         const auto keys = pending_.keys();
@@ -138,6 +152,16 @@ void BridgeControl::publish(const QVariantMap &state) {
         const double number = state.value(key).toDouble(&ok);
         if (ok && std::isfinite(number) && number >= 0 && !state.value(key).isNull()) clean.insert(key, number);
     }
-    clean.insert("updated_at", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs));
+    const auto now = QDateTime::currentDateTimeUtc();
+    clean.insert("updated_at", now.toString(Qt::ISODateWithMs));
+    // Ordinary progress is not news: listeners interpolate from position and updated_at.
+    auto steady = [](QVariantMap media) { media.remove("position"); media.remove("updated_at"); return media; };
+    bool changed = steady(clean) != steady(state_);
+    if (!changed) {
+        const auto before = QDateTime::fromString(state_.value("updated_at").toString(), Qt::ISODateWithMs);
+        const double elapsed = clean.value("state") == "playing" ? before.msecsTo(now) / 1000.0 : 0;
+        changed = std::abs(clean.value("position").toDouble() - state_.value("position").toDouble() - elapsed) > 2;
+    }
     state_ = clean;
+    if (changed) emit StateChanged();
 }
