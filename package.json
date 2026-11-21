@@ -12,6 +12,6 @@
     "test:native": "node test/native-test.js"
   },
   "devDependencies": {
-    "playwright-core": "^1.65.0"
+    "playwright-core": "^1.65.1"
   }
 }
